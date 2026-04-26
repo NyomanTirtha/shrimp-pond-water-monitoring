@@ -1,0 +1,651 @@
+// ============================================================
+// Page: Prediksi (Prediction)
+// Displays fl_chart line chart with historical + DES forecast.
+// ============================================================
+
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
+import '../providers/water_quality_provider.dart';
+import '../utils/des_algorithm.dart';
+import '../theme/app_theme.dart';
+import '../widgets/prediction_analysis_card.dart';
+
+class PredictionPage extends StatefulWidget {
+  const PredictionPage({super.key});
+
+  @override
+  State<PredictionPage> createState() => _PredictionPageState();
+}
+
+class _PredictionPageState extends State<PredictionPage>
+    with SingleTickerProviderStateMixin {
+  // 0 = Suhu, 1 = pH, 2 = Kekeruhan
+  int _selectedParameter = 0;
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(() {
+        if (!_tabController.indexIsChanging) {
+          setState(() => _selectedParameter = _tabController.index);
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<WaterQualityProvider>(
+      builder: (context, provider, _) {
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundLight,
+            appBar: AppBar(
+              title: const Text('Prediksi Tren',
+              style: TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              ),
+            ),
+            bottom: TabBar(
+              controller: _tabController,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white60,
+              indicatorColor: AppTheme.accentTeal,
+              tabs: const [
+                Tab(text: 'Suhu'),
+                Tab(text: 'pH'),
+                Tab(text: 'Kekeruhan'),
+              ],
+            ),
+          ),
+          body: provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _ParameterChartView(
+                      label: 'Suhu Air (°C)',
+                      color: const Color(0xFFFF6B6B),
+                      history: provider.history
+                          .map((h) => h.temperature)
+                          .toList(),
+                      timestamps: provider.history
+                          .map((h) => h.timestamp)
+                          .toList(),
+                      forecast: provider.tempForecast,
+                      currentValue: provider.current?.temperature ?? 0,
+                      parameterName: 'Suhu Air',
+                      unit: '°C',
+                      safeMin: 26,
+                      safeMax: 32,
+                      yMin: 20,
+                      yMax: 40,
+                    ),
+                    _ParameterChartView(
+                      label: 'pH Air',
+                      color: const Color(0xFF6BCB77),
+                      history: provider.history.map((h) => h.ph).toList(),
+                      timestamps: provider.history
+                          .map((h) => h.timestamp)
+                          .toList(),
+                      forecast: provider.phForecast,
+                      currentValue: provider.current?.ph ?? 0,
+                      parameterName: 'pH Air',
+                      unit: '',
+                      safeMin: 7.5,
+                      safeMax: 8.5,
+                      yMin: 6,
+                      yMax: 10,
+                    ),
+                    _ParameterChartView(
+                      label: 'Kekeruhan (NTU)',
+                      color: AppTheme.accentTeal,
+                      history:
+                          provider.history.map((h) => h.turbidity).toList(),
+                      timestamps: provider.history
+                          .map((h) => h.timestamp)
+                          .toList(),
+                      forecast: provider.turbidityForecast,
+                      currentValue: provider.current?.turbidity ?? 0,
+                      parameterName: 'Kekeruhan',
+                      unit: 'NTU',
+                      safeMin: 30,
+                      safeMax: 100,
+                      yMin: 0,
+                      yMax: 160,
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Private sub-widget: one parameter's full chart + legend + DES info
+// ─────────────────────────────────────────────────────────────
+class _ParameterChartView extends StatelessWidget {
+  final String label;
+  final Color color;
+  final List<double> history;
+  final List<DateTime> timestamps;  // actual sensor timestamps
+  final DESResult? forecast;
+  final double currentValue;
+  final String parameterName;
+  final String unit;
+  final double safeMin;
+  final double safeMax;
+  final double yMin;
+  final double yMax;
+
+  const _ParameterChartView({
+    required this.label,
+    required this.color,
+    required this.history,
+    required this.timestamps,
+    required this.forecast,
+    required this.currentValue,
+    required this.parameterName,
+    required this.unit,
+    required this.safeMin,
+    required this.safeMax,
+    required this.yMin,
+    required this.yMax,
+  });
+
+  // ── Helpers: format label sumbu X ──────────────────────────
+
+  /// Format DateTime → "HH:mm" (atau "HH:mm:ss" jika interval < 1 menit)
+  String _formatTime(DateTime dt, Duration interval) {
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    if (interval.inSeconds < 60) {
+      final ss = dt.second.toString().padLeft(2, '0');
+      return '$hh:$mm:$ss';
+    }
+    return '$hh:$mm';
+  }
+
+  /// Format selisih waktu untuk label prediksi → "T+5m" atau "T+30s"
+  String _formatOffset(Duration interval, int forecastStep) {
+    final total = interval * forecastStep;
+    if (total.inMinutes >= 1) {
+      return 'T+${total.inMinutes}m';
+    }
+    return 'T+${total.inSeconds}s';
+  }
+
+  /// Hitung interval antar pembacaan dari dua titik terakhir.
+  /// Fallback ke 5 menit jika data kurang dari 2 titik.
+  Duration _readingInterval() {
+    if (timestamps.length >= 2) {
+      return timestamps.last.difference(timestamps[timestamps.length - 2]).abs();
+    }
+    return const Duration(minutes: 5);
+  }
+
+  /// Widget teks yang dirotasi ~25° untuk menghindari tabrakan antar label.
+  Widget _rotatedLabel(String text, Color color, FontWeight weight) {
+    return Transform.rotate(
+      angle: -0.44, // ~25 derajat dalam radian
+      alignment: Alignment.topRight,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 8.5,
+          color: color,
+          fontWeight: weight,
+          height: 1,
+        ),
+      ),
+    );
+  }
+
+  @override
+
+  Widget build(BuildContext context) {
+    if (history.isEmpty) {
+      return const Center(child: Text('Belum ada data'));
+    }
+
+    // Build spots for historical line
+    final histSpots = history.asMap().entries.map((e) {
+      return FlSpot(e.key.toDouble(), e.value);
+    }).toList();
+
+    // Build spots for DES forecast (appended after historical)
+    final forecastSpots = forecast == null
+        ? <FlSpot>[]
+        : forecast!.forecast.asMap().entries.map((e) {
+            return FlSpot(
+              (history.length + e.key).toDouble(),
+              e.value.clamp(yMin, yMax),
+            );
+          }).toList();
+
+    // Link last historical point to first forecast for visual continuity
+    final linkerSpots = forecastSpots.isNotEmpty
+        ? [histSpots.last, forecastSpots.first]
+        : <FlSpot>[];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header bersih ─────────────────────────────────
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Analisis & Tren Prediksi',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textGray,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Chart ─────────────────────────────────────────
+          Container(
+            height: 260,
+            padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryBlue.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: LineChart(
+              LineChartData(
+                minY: yMin,
+                maxY: yMax,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (v) => FlLine(
+                    color: Colors.grey.shade200,
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      getTitlesWidget: (v, meta) => Text(
+                        v.toStringAsFixed(1),
+                        style: const TextStyle(
+                            fontSize: 10, color: AppTheme.textGray),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      // Berikan cukup ruang vertikal untuk label yang dirotasi
+                      reservedSize: 40,
+                      getTitlesWidget: (v, meta) {
+                        final idx = v.toInt();
+                        final interval = _readingInterval();
+
+                        // ── Hitung step (interval) antar label ──────────
+                        // Tampilkan maks ~5 label historis di layar
+                        final int labelStep =
+                            (history.length / 5).ceil().clamp(1, 999);
+
+                        if (idx < history.length) {
+                          // ── Label historis ────────────────────────────
+                          // Tampilkan hanya pada kelipatan labelStep;
+                          // selalu tampilkan titik pertama dan terakhir.
+                          final bool isFirst = idx == 0;
+                          final bool isLast  = idx == history.length - 1;
+                          if (!isFirst && !isLast && idx % labelStep != 0) {
+                            return const SizedBox.shrink();
+                          }
+                          final ts = (idx < timestamps.length)
+                              ? timestamps[idx]
+                              : DateTime.now().subtract(
+                                  interval * (history.length - 1 - idx));
+                          return _rotatedLabel(
+                            _formatTime(ts, interval),
+                            AppTheme.textGray,
+                            FontWeight.w400,
+                          );
+                        } else {
+                          // ── Label prediksi ────────────────────────────
+                          final forecastStep = idx - history.length + 1;
+                          // Tampilkan semua forecast (max 6 titik)
+                          return _rotatedLabel(
+                            _formatOffset(interval, forecastStep),
+                            color,
+                            FontWeight.w600,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                lineBarsData: [
+                  // Historical actual line
+                  LineChartBarData(
+                    spots: histSpots,
+                    isCurved: true,
+                    color: color,
+                    barWidth: 2.5,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: color.withOpacity(0.08),
+                    ),
+                  ),
+                  // Linker (dashed transition)
+                  if (linkerSpots.isNotEmpty)
+                    LineChartBarData(
+                      spots: linkerSpots,
+                      isCurved: false,
+                      color: color.withOpacity(0.5),
+                      barWidth: 1.5,
+                      dashArray: [4, 4],
+                      dotData: const FlDotData(show: false),
+                    ),
+                  // DES Forecast line
+                  if (forecastSpots.isNotEmpty)
+                    LineChartBarData(
+                      spots: forecastSpots,
+                      isCurved: true,
+                      color: color.withOpacity(0.65),
+                      barWidth: 2,
+                      dashArray: [6, 4],
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, pct, bar, idx) =>
+                            FlDotCirclePainter(
+                          radius: 4,
+                          color: color,
+                          strokeWidth: 1.5,
+                          strokeColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Legend ────────────────────────────────
+          _buildLegend(color),
+          const SizedBox(height: 16),
+
+          // ── Analisis Cerdas ───────────────────────────
+          if (forecast != null && forecast!.forecast.isNotEmpty)
+            PredictionAnalysisCard(
+              parameterName: parameterName,
+              unit: unit,
+              currentValue: currentValue,
+              predictedValue: forecast!.forecast.first,
+              safeMin: safeMin,
+              safeMax: safeMax,
+            ),
+          const SizedBox(height: 24),
+
+          // ── Forecast table ────────────────────────────
+          if (forecast != null)
+            _buildForecastTable(color, safeMin, safeMax),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildLegend(Color color) {
+    Widget dot({required Color c, bool dashed = false}) => Container(
+          width: 28,
+          height: 3,
+          decoration: BoxDecoration(
+            color: dashed ? Colors.transparent : c,
+            border: dashed ? Border.all(color: c) : null,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        );
+
+    return Row(
+      children: [
+        dot(c: color),
+        const SizedBox(width: 6),
+        const Text('Data Aktual',
+            style: TextStyle(fontSize: 11, color: AppTheme.textGray)),
+        const SizedBox(width: 16),
+        dot(c: color.withOpacity(0.65), dashed: true),
+        const SizedBox(width: 6),
+        const Text('Prediksi DES',
+            style: TextStyle(fontSize: 11, color: AppTheme.textGray)),
+      ],
+    );
+  }
+
+  Widget _buildForecastTable(Color color, double safeMin, double safeMax) {
+    final interval = _readingInterval();
+
+    // ── Hitung durasi per periode untuk label ─────────────────
+    // Jika interval tidak terdeteksi (< 1 dtk), fallback ke 15 menit.
+    final Duration step =
+        interval.inSeconds > 0 ? interval : const Duration(minutes: 15);
+
+    String periodLabel(int forecastStep) {
+      final total = step * forecastStep;
+      if (total.inMinutes >= 60) {
+        final h = total.inHours;
+        final m = total.inMinutes % 60;
+        return m == 0 ? '+${h}j' : '+${h}j ${m}m';
+      } else if (total.inMinutes >= 1) {
+        return '+${total.inMinutes} mnt';
+      } else {
+        return '+${total.inSeconds} dtk';
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Judul seksi ───────────────────────────────────
+        const Text(
+          'Nilai Prediksi ke Depan',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Tabel ──────────────────────────────────────────
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Table(
+            border: TableBorder.all(
+              color: AppTheme.primaryBlue.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            columnWidths: const {
+              0: FlexColumnWidth(1.1),  // Waktu
+              1: FlexColumnWidth(1.8),  // Nilai prediksi
+              2: FlexColumnWidth(1),    // Status
+            },
+            children: [
+              // ── Header row ───────────────────────────────
+              TableRow(
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryBlue.withOpacity(0.08),
+                ),
+                children: [
+                  _headerCell('Waktu'),
+                  _headerCell('Nilai Prediksi ($unit)'),
+                  _headerCell('Status'),
+                ],
+              ),
+
+              // ── Data rows ────────────────────────────────
+              ...forecast!.forecast.asMap().entries.map((e) {
+                final int step1 = e.key + 1;
+                final double val = e.value;
+                final bool isDanger = val < safeMin || val > safeMax;
+
+                // Warna baris: merah muda jika bahaya, putih jika aman
+                final Color rowBg = isDanger
+                    ? const Color(0xFFFFEBEB)   // merah muda lembut
+                    : (e.key.isEven
+                        ? Colors.white
+                        : AppTheme.surfaceBlue.withOpacity(0.4));
+
+                final Color valueColor =
+                    isDanger ? AppTheme.statusDanger : color;
+
+                return TableRow(
+                  decoration: BoxDecoration(color: rowBg),
+                  children: [
+                    // Kolom waktu
+                    _dataCell(
+                      periodLabel(step1),
+                      AppTheme.textGray,
+                      FontWeight.w500,
+                    ),
+                    // Kolom nilai prediksi
+                    _dataCell(
+                      val.toStringAsFixed(2),
+                      valueColor,
+                      FontWeight.w700,
+                    ),
+                    // Kolom status
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 7),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isDanger
+                                ? AppTheme.statusDanger.withOpacity(0.12)
+                                : AppTheme.statusSafe.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isDanger ? 'Bahaya' : 'Aman',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: isDanger
+                                  ? AppTheme.statusDanger
+                                  : AppTheme.statusSafe,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ),
+
+        // ── Keterangan rentang aman ───────────────────────────
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Container(width: 10, height: 10,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEBEB),
+                  border: Border.all(
+                      color: AppTheme.statusDanger.withOpacity(0.4)),
+                  borderRadius: BorderRadius.circular(2),
+                )),
+            const SizedBox(width: 6),
+            Text(
+              'Di luar rentang aman ($safeMin – $safeMax $unit)',
+              style: const TextStyle(
+                  fontSize: 10, color: AppTheme.textGray),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ── Helper: sel header ──────────────────────────────────
+  Widget _headerCell(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primaryBlue,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  // ── Helper: sel data ───────────────────────────────────
+  Widget _dataCell(String text, Color color, FontWeight weight) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: weight,
+          color: color,
+        ),
+      ),
+    );
+  }
+}

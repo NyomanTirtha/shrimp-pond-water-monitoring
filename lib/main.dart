@@ -1,0 +1,103 @@
+// ============================================================
+// Entry point: main.dart
+// AquaMonitor – Monitoring Kualitas Air Tambak Udang
+// ============================================================
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/water_quality_provider.dart';
+import 'theme/app_theme.dart';
+import 'pages/dashboard_page.dart';
+import 'pages/prediction_page.dart';
+import 'pages/info_page.dart';
+
+void main() {
+  // TODO: uncomment to enable Firebase later
+  // WidgetsFlutterBinding.ensureInitialized();
+  // await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const AquaMonitorApp());
+}
+
+class AquaMonitorApp extends StatelessWidget {
+  const AquaMonitorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => WaterQualityProvider(),
+      child: MaterialApp(
+        title: 'AquaMonitor – Tambak Udang',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.theme,
+        home: const MainNavigationShell(),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Shell: Bottom Navigation Bar wrapper
+// ─────────────────────────────────────────────────────────────
+class MainNavigationShell extends StatefulWidget {
+  const MainNavigationShell({super.key});
+
+  @override
+  State<MainNavigationShell> createState() => _MainNavigationShellState();
+}
+
+class _MainNavigationShellState extends State<MainNavigationShell> {
+  int _currentIndex = 0;
+
+  // Pages are kept alive when switching tabs via IndexedStack
+  final List<Widget> _pages = const [
+    DashboardPage(),
+    PredictionPage(),
+    InfoPage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryBlue.withOpacity(0.12),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (idx) => setState(() => _currentIndex = idx),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_rounded),
+            activeIcon: Icon(Icons.dashboard_rounded),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.show_chart_rounded),
+            activeIcon: Icon(Icons.show_chart_rounded),
+            label: 'Prediksi',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.info_outline_rounded),
+            activeIcon: Icon(Icons.info_rounded),
+            label: 'Info',
+          ),
+        ],
+      ),
+    );
+  }
+}
