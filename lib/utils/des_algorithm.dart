@@ -2,76 +2,141 @@
 // Utility: Double Exponential Smoothing (DES)
 // Method: Holt's Linear Trend Method
 //
-// Formulas (plug into your skripsi):
-//   Level:   L_t = α * y_t + (1 - α) * (L_{t-1} + T_{t-1})
-//   Trend:   T_t = β * (L_t - L_{t-1}) + (1 - β) * T_{t-1}
-//   Forecast: ŷ_{t+m} = L_t + m * T_t
+// Rumus (untuk skripsi):
+//   Level:    L_t = α · y_t + (1 − α) · (L_{t−1} + T_{t−1})
+//   Trend:    T_t = β · (L_t − L_{t−1}) + (1 − β) · T_{t−1}
+//   Forecast: ŷ_{t+m} = L_t + m · T_t
 //
-// Parameters:
-//   alpha (α): Smoothing factor for level      [0 < α < 1]
-//   beta  (β): Smoothing factor for trend      [0 < β < 1]
+// Parameter:
+//   alpha (α): faktor pemulusan level  [0 < α < 1]
+//   beta  (β): faktor pemulusan tren   [0 < β < 1]
 // ============================================================
 
-class DESResult {
-  final List<double> smoothedValues; // fitted values for historical data
-  final List<double> forecast; // future predictions
+// ─── Konfigurasi parameter DES ─────────────────────────────
+// Ubah nilai di sini untuk menyesuaikan alpha/beta skripsi Anda.
+class DESConfig {
   final double alpha;
   final double beta;
+  final List<int> forecastPeriods;
+  final Duration sensorInterval;
+
+  const DESConfig({
+    this.alpha  = 0.5,  // default sesuai spesifikasi
+    this.beta   = 0.5,
+    this.forecastPeriods = const [3, 6, 9],
+    this.sensorInterval = const Duration(minutes: 10),
+  }) : assert(alpha > 0 && alpha < 1, 'alpha harus antara 0 dan 1'),
+       assert(beta  > 0 && beta  < 1, 'beta harus antara 0 dan 1');
+
+  int get periods => forecastPeriods.length;
+}
+
+// ─── Model hasil DES ──────────────────────────────────────
+class DESResult {
+  /// Nilai fitted (hasil smoothing) untuk data historis.
+  final List<double> smoothedValues;
+
+  /// Nilai prediksi m periode ke depan (F+1 … F+periods).
+  final List<double> forecast;
+
+  final double alpha;
+  final double beta;
+  final List<int> forecastPeriods;
+  final Duration sensorInterval;
 
   const DESResult({
     required this.smoothedValues,
     required this.forecast,
     required this.alpha,
     required this.beta,
+    required this.forecastPeriods,
+    required this.sensorInterval,
   });
+
+  List<Duration> get forecastOffsets {
+    return forecastPeriods.map((m) => sensorInterval * m).toList();
+  }
 }
 
+// ─── Fungsi utama: calculateDES ───────────────────────────
+// Menerima List<double> dataHistoris dan mengembalikan
+// List<double> dataPrediksi (F+1 … F+periods).
+//
+// Keamanan data:
+//   • Jika dataHistoris < 2, kembalikan list kosong (tidak crash).
+//   • Nilai prediksi tidak diclamp agar grafik tetap jujur.
+//
+List<double> calculateDES(
+  List<double> dataHistoris, {
+  DESConfig config = const DESConfig(),
+}) {
+  // ── Validasi keamanan data ─────────────────────────────
+  if (dataHistoris.length < 2) return [];
+
+  final result = DESAlgorithm.run(dataHistoris, config: config);
+  return result.forecast;
+}
+
+// ─── Kelas DESAlgorithm (inti komputasi) ──────────────────
 class DESAlgorithm {
-  /// Run Double Exponential Smoothing over [data].
+  /// Jalankan DES pada [data] menggunakan konfigurasi [config].
   ///
-  /// [alpha]    – level smoothing factor (default 0.3)
-  /// [beta]     – trend smoothing factor (default 0.1)
-  /// [periods]  – how many future periods to predict (default 6)
-  ///
-  /// Returns a [DESResult] containing smoothed history + forecast.
+  /// Mengembalikan [DESResult] berisi smoothed history + forecast.
   static DESResult run(
     List<double> data, {
-    double alpha = 0.3,
-    double beta = 0.1,
-    int periods = 6,
+    DESConfig config = const DESConfig(),
   }) {
-    assert(alpha > 0 && alpha < 1, 'alpha must be between 0 and 1');
-    assert(beta > 0 && beta < 1, 'beta must be between 0 and 1');
-    assert(data.length >= 2, 'Need at least 2 data points');
+    // ── Validasi — kembalikan kosong daripada crash ────────
+    if (data.length < 2) {
+      return DESResult(
+        smoothedValues: [],
+        forecast: [],
+        alpha: config.alpha,
+        beta: config.beta,
+        forecastPeriods: config.forecastPeriods,
+        sensorInterval: config.sensorInterval,
+      );
+    }
 
-    // ── Initialisation ─────────────────────────────────────
+    final double alpha   = config.alpha;
+    final double beta    = config.beta;
+    final forecastPeriods = config.forecastPeriods;
+
+    // ── Inisialisasi (Holt's method) ──────────────────────
+    // L_1 = y_1
+    // T_1 = y_2 − y_1  (estimasi tren awal)
     double level = data[0];
     double trend = data[1] - data[0];
 
     final List<double> smoothed = [];
 
-    // ── Smoothing pass ─────────────────────────────────────
+    // ── Iterasi smoothing ──────────────────────────────────
     for (int t = 0; t < data.length; t++) {
       final double prevLevel = level;
-      // Level update
+
+      // L_t = α · y_t + (1 − α) · (L_{t−1} + T_{t−1})
       level = alpha * data[t] + (1 - alpha) * (level + trend);
-      // Trend update
+
+      // T_t = β · (L_t − L_{t−1}) + (1 − β) · T_{t−1}
       trend = beta * (level - prevLevel) + (1 - beta) * trend;
-      // Fitted value (one-step-ahead from previous state)
+
+      // Fitted value = L_{t−1} + T_{t−1}  (prediksi satu langkah sebelumnya)
       smoothed.add(prevLevel + trend);
     }
 
-    // ── Forecast ───────────────────────────────────────────
-    final List<double> forecast = List.generate(
-      periods,
-      (m) => level + (m + 1) * trend,
-    );
+    // ── Forecast: ŷ_{t+m} = L_t + m · T_t ────────────────
+    final List<double> forecast = forecastPeriods
+        .where((m) => m > 0)
+        .map((m) => level + m * trend)
+        .toList();
 
     return DESResult(
       smoothedValues: smoothed,
       forecast: forecast,
       alpha: alpha,
       beta: beta,
+      forecastPeriods: forecastPeriods,
+      sensorInterval: config.sensorInterval,
     );
   }
 }

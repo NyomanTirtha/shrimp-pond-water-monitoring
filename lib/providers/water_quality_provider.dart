@@ -1,10 +1,12 @@
 // ============================================================
 // Provider: WaterQualityProvider
 //
-// Currently uses simulated (dummy) data.
-// To connect Firebase, replace `_fetchData()` with a
-// FirebaseDatabase.instance.ref('sensor').onValue.listen(...)
-// stream and call `notifyListeners()` on each update.
+// Sumber data dapat dipilih:
+//   DataSource.firebase  → data real dari Firebase (PRODUKSI)
+//   DataSource.simulated → data dummy timer       (DEVELOPMENT)
+//
+// Ganti baris 'dataSource: DataSource.simulated' menjadi
+// 'dataSource: DataSource.firebase' untuk switch ke Firebase.
 // ============================================================
 
 import 'dart:async';
@@ -12,59 +14,169 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/water_quality_model.dart';
 import '../utils/des_algorithm.dart';
+import '../services/firebase_service.dart';
+import '../services/notification_service.dart';
+
+// ── Enum: pilihan sumber data ──────────────────────────────
+enum DataSource { firebase, simulated }
+
+// ── Enum: status koneksi ──────────────────────────────────
+enum ConnectionStatus { connecting, connected, disconnected, error }
 
 class WaterQualityProvider extends ChangeNotifier {
-  // ── Current (latest) reading ────────────────────────────
+
+  // ==========================================================
+  // KONFIGURASI — ubah di sini untuk switch Firebase ↔ simulasi
+  // ==========================================================
+  static const DataSource _dataSource = DataSource.firebase;
+
+  // ── Konfigurasi DES ────────────────────────────────────────
+  DESConfig _desConfig = const DESConfig(alpha: 0.5, beta: 0.5);
+  DESConfig get desConfig => _desConfig;
+
+  int _dataVersion = 0;
+  int get dataVersion => _dataVersion;
+
+  void updateDESConfig({required double alpha, required double beta}) {
+    _desConfig = DESConfig(
+      alpha: alpha.clamp(0.01, 0.99),
+      beta:  beta.clamp(0.01, 0.99),
+    );
+    _computeForecasts();
+    _dataVersion++;
+    notifyListeners();
+  }
+
+  // ── Data saat ini ──────────────────────────────────────────
   WaterQualityModel? _current;
   WaterQualityModel? get current => _current;
 
-  // ── Historical data for chart (last N readings) ─────────
+  // ── Riwayat data (maks 24 pembacaan) ─────────────────────
   final List<WaterQualityModel> _history = [];
   List<WaterQualityModel> get history => List.unmodifiable(_history);
 
-  // ── DES forecast results ─────────────────────────────────
+  // ── Hasil DES ─────────────────────────────────────────────
   DESResult? _tempForecast;
   DESResult? _phForecast;
   DESResult? _turbidityForecast;
 
-  DESResult? get tempForecast => _tempForecast;
-  DESResult? get phForecast => _phForecast;
-  DESResult? get turbidityForecast => _turbidityForecast;
+  DESResult? get tempForecast       => _tempForecast;
+  DESResult? get phForecast         => _phForecast;
+  DESResult? get turbidityForecast  => _turbidityForecast;
 
-  // ── Loading / error state ────────────────────────────────
-  bool _isLoading = true;
-  bool get isLoading => _isLoading;
-  String? _error;
-  String? get error => _error;
+  List<double> get tempPredictions      => _tempForecast?.forecast      ?? [];
+  List<double> get phPredictions        => _phForecast?.forecast        ?? [];
+  List<double> get turbidityPredictions => _turbidityForecast?.forecast ?? [];
 
-  // ── Simulation timer ─────────────────────────────────────
-  Timer? _timer;
-  final _random = Random();
+  // ── Status koneksi & loading ──────────────────────────────
+  ConnectionStatus _connectionStatus = ConnectionStatus.connecting;
+  ConnectionStatus get connectionStatus => _connectionStatus;
 
-  WaterQualityProvider() {
-    _initSimulatedData();
-    // Refresh every 5 seconds (replace with Firebase stream later)
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchData());
+  bool get isLoading =>
+      _connectionStatus == ConnectionStatus.connecting && _current == null;
+
+  /// Pesan yang ditampilkan ke UI saat data belum tersedia.
+  String get statusMessage {
+    switch (_connectionStatus) {
+      case ConnectionStatus.connecting:
+        return 'Menunggu data...';
+      case ConnectionStatus.disconnected:
+        return 'Koneksi terputus. Memeriksa ulang...';
+      case ConnectionStatus.error:
+        return _lastError ?? 'Terjadi kesalahan. Coba lagi.';
+      case ConnectionStatus.connected:
+        return 'Terhubung';
+    }
   }
 
-  // ----------------------------------------------------------
-  // Initialise with a history of 12 readings for the chart
-  // ----------------------------------------------------------
-  void _initSimulatedData() {
+  String? _lastError;
+
+  // ── Internal ──────────────────────────────────────────────
+  StreamSubscription<WaterQualityModel>? _firebaseSubscription;
+  Timer? _simulationTimer;
+  Timer? _firebaseFallbackTimer;
+  final _random = Random();
+
+  // ==========================================================
+  // KONSTRUKTOR
+  // ==========================================================
+  WaterQualityProvider() {
+    if (_dataSource == DataSource.firebase) {
+      _startFirebaseListener();
+    } else {
+      _startSimulation();
+    }
+  }
+
+  // ==========================================================
+  // FIREBASE — listener real-time
+  // ==========================================================
+  void _startFirebaseListener() {
+    _connectionStatus = ConnectionStatus.connecting;
+    notifyListeners();
+
+    _firebaseFallbackTimer?.cancel();
+    _firebaseFallbackTimer = Timer(const Duration(seconds: 8), () {
+      if (_current != null) return;
+      _lastError = 'Firebase belum mengirim data valid. Menggunakan data simulasi sementara.';
+      _connectionStatus = ConnectionStatus.disconnected;
+      _startSimulation();
+    });
+
+    _firebaseSubscription = FirebaseService()
+        .sensorStream()
+        .listen(
+          // ── Data masuk ──────────────────────────────────
+          (model) async {
+            _firebaseFallbackTimer?.cancel();
+            _connectionStatus = ConnectionStatus.connected;
+            _lastError = null;
+            await _syncLiveAndHistory(model);
+          },
+          // ── Error koneksi / parse ────────────────────────
+          onError: (Object error) {
+            _lastError = error.toString();
+
+            // Bedakan error koneksi vs error lainnya
+            final msg = error.toString().toLowerCase();
+            _connectionStatus = msg.contains('connection') ||
+                    msg.contains('network') ||
+                    msg.contains('failed host')
+                ? ConnectionStatus.disconnected
+                : ConnectionStatus.error;
+
+            notifyListeners();
+          },
+          // ── Stream ditutup (jarang terjadi) ─────────────
+          onDone: () {
+            _connectionStatus = ConnectionStatus.disconnected;
+            notifyListeners();
+          },
+          cancelOnError: false, // jangan hentikan stream saat error
+        );
+  }
+
+  // ==========================================================
+  // SIMULASI — data dummy timer (Development)
+  // ==========================================================
+  void _startSimulation() {
+    _simulationTimer?.cancel();
+    _connectionStatus = ConnectionStatus.connected;
+
+    // Buat 13 data awal
     for (int i = 12; i >= 0; i--) {
-      _history.add(_simulateReading(
+      _addReading(_simulateReading(
         timestamp: DateTime.now().subtract(Duration(minutes: i * 5)),
       ));
     }
-    _current = _history.last;
-    _isLoading = false;
-    _computeForecasts();
-    notifyListeners();
+
+    // Refresh tiap 5 detik
+    _simulationTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _addReading(_simulateReading()),
+    );
   }
 
-  // ----------------------------------------------------------
-  // Simulate a new reading (swap this with Firebase later)
-  // ----------------------------------------------------------
   WaterQualityModel _simulateReading({DateTime? timestamp}) {
     final base = _history.isEmpty
         ? WaterQualityModel(
@@ -75,53 +187,98 @@ class WaterQualityProvider extends ChangeNotifier {
           )
         : _history.last;
 
-    double clamp(double v, double min, double max) => v.clamp(min, max);
+    double clamp(double v, double lo, double hi) => v.clamp(lo, hi);
 
     return WaterQualityModel(
       temperature:
           clamp(base.temperature + (_random.nextDouble() * 1.0 - 0.5), 24, 35),
-      ph: clamp(base.ph + (_random.nextDouble() * 0.3 - 0.15), 6.5, 9.5),
+      ph:       clamp(base.ph + (_random.nextDouble() * 0.3 - 0.15), 6.5, 9.5),
       turbidity:
           clamp(base.turbidity + (_random.nextDouble() * 8.0 - 4.0), 10, 150),
       timestamp: timestamp ?? DateTime.now(),
     );
   }
 
-  // ----------------------------------------------------------
-  // Fetch / refresh data  ← REPLACE BODY with Firebase stream
-  // ----------------------------------------------------------
-  void _fetchData() {
+  // ==========================================================
+  // SHARED — menambah pembacaan baru ke history
+  // ==========================================================
+  void _addReading(WaterQualityModel model) {
+    if (_current?.hasSameSensorValues(model) ?? false) return;
+
+    _history.add(model);
+    if (_history.length > 24) _history.removeAt(0); // simpan 24 terakhir
+    _current = model;
+    _computeForecasts();
+    _dataVersion++;
+    _checkWarnings(model);
+    notifyListeners();
+  }
+
+  Future<void> _syncLiveAndHistory(WaterQualityModel liveModel) async {
+    final hasSameLiveValues = _current?.hasSameSensorValues(liveModel) ?? false;
+    if (hasSameLiveValues && _history.isNotEmpty) return;
+
     try {
-      final reading = _simulateReading();
-      _history.add(reading);
-      if (_history.length > 24) _history.removeAt(0); // keep last 24 readings
-      _current = reading;
+      final history = await FirebaseService().fetchLastHistory(limit: 10);
+      _history
+        ..clear()
+        ..addAll(history);
+
+      if (_history.isEmpty || !_history.last.hasSameSensorValues(liveModel)) {
+        _history.add(liveModel);
+      }
+      if (_history.length > 24) {
+        _history.removeRange(0, _history.length - 24);
+      }
+
+      _current = liveModel;
       _computeForecasts();
+      _dataVersion++;
+      await _checkWarnings(liveModel);
       notifyListeners();
     } catch (e) {
-      _error = e.toString();
-      notifyListeners();
+      _lastError = 'Gagal mengambil history Firebase: $e';
+      _connectionStatus = ConnectionStatus.error;
+      _addReading(liveModel);
     }
   }
 
-  // ----------------------------------------------------------
-  // Run DES on the historical series for each parameter
-  // ----------------------------------------------------------
+  // ==========================================================
+  // DES — hitung ulang setiap ada data baru
+  // ==========================================================
   void _computeForecasts() {
     if (_history.length < 2) return;
 
     final temps = _history.map((h) => h.temperature).toList();
-    final phs = _history.map((h) => h.ph).toList();
+    final phs   = _history.map((h) => h.ph).toList();
     final turbs = _history.map((h) => h.turbidity).toList();
 
-    _tempForecast = DESAlgorithm.run(temps, periods: 6);
-    _phForecast = DESAlgorithm.run(phs, periods: 6);
-    _turbidityForecast = DESAlgorithm.run(turbs, periods: 6);
+    _tempForecast      = DESAlgorithm.run(temps, config: _desConfig);
+    _phForecast        = DESAlgorithm.run(phs,   config: _desConfig);
+    _turbidityForecast = DESAlgorithm.run(turbs,  config: _desConfig);
   }
 
+  Future<void> _checkWarnings(WaterQualityModel model) async {
+    await NotificationService().checkLiveReading(model);
+    await NotificationService().checkForecasts(
+      tempForecast: _tempForecast,
+      phForecast: _phForecast,
+      turbidityForecast: _turbidityForecast,
+    );
+  }
+
+  // ── Shortcut calculateDES() standalone ───────────────────
+  List<double> getPredictions(List<double> dataHistoris) =>
+      calculateDES(dataHistoris, config: _desConfig);
+
+  // ==========================================================
+  // DISPOSE
+  // ==========================================================
   @override
   void dispose() {
-    _timer?.cancel();
+    _firebaseSubscription?.cancel();
+    _simulationTimer?.cancel();
+    _firebaseFallbackTimer?.cancel();
     super.dispose();
   }
 }

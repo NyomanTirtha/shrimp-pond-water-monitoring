@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "311522675251",
+    "firebase_url": "https://monitoring-air-tambak-udang-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "monitoring-air-tambak-udang",
+    "storage_bucket": "monitoring-air-tambak-udang.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311522675251:android:a5b41070edb0b40839f146",
+        "android_client_info": {
+          "package_name": "com.example.monitoring_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDxQF6WGvCnIYfz-sxjLsL_CsFe0k3lkl8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

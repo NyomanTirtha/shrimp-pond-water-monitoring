@@ -78,6 +78,12 @@ class WaterQualityModel {
       ),
     );
   }
+
+  bool hasSameSensorValues(WaterQualityModel other) {
+    return temperature == other.temperature &&
+        ph == other.ph &&
+        turbidity == other.turbidity;
+  }
 }
 
 // ----------------------------------------------------------

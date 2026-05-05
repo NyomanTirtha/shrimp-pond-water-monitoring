@@ -11,6 +11,38 @@ import '../utils/des_algorithm.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prediction_analysis_card.dart';
 
+class _PredictionSnapshot {
+  final int dataVersion;
+  final bool isLoading;
+  final List<double> temperatures;
+  final List<double> phs;
+  final List<double> turbidities;
+  final List<DateTime> timestamps;
+  final DESResult? tempForecast;
+  final DESResult? phForecast;
+  final DESResult? turbidityForecast;
+  final double currentTemperature;
+  final double currentPh;
+  final double currentTurbidity;
+  final String statusMessage;
+
+  const _PredictionSnapshot({
+    required this.dataVersion,
+    required this.isLoading,
+    required this.temperatures,
+    required this.phs,
+    required this.turbidities,
+    required this.timestamps,
+    required this.tempForecast,
+    required this.phForecast,
+    required this.turbidityForecast,
+    required this.currentTemperature,
+    required this.currentPh,
+    required this.currentTurbidity,
+    required this.statusMessage,
+  });
+}
+
 class PredictionPage extends StatefulWidget {
   const PredictionPage({super.key});
 
@@ -43,8 +75,27 @@ class _PredictionPageState extends State<PredictionPage>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<WaterQualityProvider>(
-      builder: (context, provider, _) {
+    return Selector<WaterQualityProvider, _PredictionSnapshot>(
+      selector: (_, provider) => _PredictionSnapshot(
+        dataVersion: provider.dataVersion,
+        isLoading: provider.isLoading,
+        temperatures: provider.history.map((h) => h.temperature).toList(),
+        phs: provider.history.map((h) => h.ph).toList(),
+        turbidities: provider.history.map((h) => h.turbidity).toList(),
+        timestamps: provider.history.map((h) => h.timestamp).toList(),
+        tempForecast: provider.tempForecast,
+        phForecast: provider.phForecast,
+        turbidityForecast: provider.turbidityForecast,
+        currentTemperature: provider.current?.temperature ?? 0,
+        currentPh: provider.current?.ph ?? 0,
+        currentTurbidity: provider.current?.turbidity ?? 0,
+        statusMessage: provider.statusMessage,
+      ),
+      shouldRebuild: (previous, next) =>
+          previous.dataVersion != next.dataVersion ||
+          previous.isLoading != next.isLoading ||
+          previous.statusMessage != next.statusMessage,
+      builder: (context, snapshot, _) {
         return Scaffold(
           backgroundColor: AppTheme.backgroundLight,
             appBar: AppBar(
@@ -67,66 +118,98 @@ class _PredictionPageState extends State<PredictionPage>
               ],
             ),
           ),
-          body: provider.isLoading
-              ? const Center(child: CircularProgressIndicator())
+          body: snapshot.isLoading && snapshot.temperatures.isEmpty
+              ? _buildLoading(snapshot.statusMessage)
+              : snapshot.temperatures.isEmpty
+                  ? _buildEmptyState(snapshot.statusMessage)
               : TabBarView(
                   controller: _tabController,
                   children: [
                     _ParameterChartView(
                       label: 'Suhu Air (°C)',
                       color: const Color(0xFFFF6B6B),
-                      history: provider.history
-                          .map((h) => h.temperature)
-                          .toList(),
-                      timestamps: provider.history
-                          .map((h) => h.timestamp)
-                          .toList(),
-                      forecast: provider.tempForecast,
-                      currentValue: provider.current?.temperature ?? 0,
+                      history: snapshot.temperatures,
+                      timestamps: snapshot.timestamps,
+                      forecast: snapshot.tempForecast,
+                      currentValue: snapshot.currentTemperature,
                       parameterName: 'Suhu Air',
                       unit: '°C',
                       safeMin: 26,
                       safeMax: 32,
                       yMin: 20,
                       yMax: 40,
+                      decimalPlaces: 1,
                     ),
                     _ParameterChartView(
                       label: 'pH Air',
                       color: const Color(0xFF6BCB77),
-                      history: provider.history.map((h) => h.ph).toList(),
-                      timestamps: provider.history
-                          .map((h) => h.timestamp)
-                          .toList(),
-                      forecast: provider.phForecast,
-                      currentValue: provider.current?.ph ?? 0,
+                      history: snapshot.phs,
+                      timestamps: snapshot.timestamps,
+                      forecast: snapshot.phForecast,
+                      currentValue: snapshot.currentPh,
                       parameterName: 'pH Air',
                       unit: '',
                       safeMin: 7.5,
                       safeMax: 8.5,
                       yMin: 6,
                       yMax: 10,
+                      decimalPlaces: 2,
                     ),
                     _ParameterChartView(
                       label: 'Kekeruhan (NTU)',
                       color: AppTheme.accentTeal,
-                      history:
-                          provider.history.map((h) => h.turbidity).toList(),
-                      timestamps: provider.history
-                          .map((h) => h.timestamp)
-                          .toList(),
-                      forecast: provider.turbidityForecast,
-                      currentValue: provider.current?.turbidity ?? 0,
+                      history: snapshot.turbidities,
+                      timestamps: snapshot.timestamps,
+                      forecast: snapshot.turbidityForecast,
+                      currentValue: snapshot.currentTurbidity,
                       parameterName: 'Kekeruhan',
                       unit: 'NTU',
                       safeMin: 30,
                       safeMax: 100,
                       yMin: 0,
                       yMax: 160,
+                      decimalPlaces: 1,
                     ),
                   ],
                 ),
         );
       },
+    );
+  }
+
+  Widget _buildLoading(String message) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppTheme.textGray,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppTheme.textGray,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -147,6 +230,7 @@ class _ParameterChartView extends StatelessWidget {
   final double safeMax;
   final double yMin;
   final double yMax;
+  final int decimalPlaces;
 
   const _ParameterChartView({
     required this.label,
@@ -161,6 +245,7 @@ class _ParameterChartView extends StatelessWidget {
     required this.safeMax,
     required this.yMin,
     required this.yMax,
+    required this.decimalPlaces,
   });
 
   // ── Helpers: format label sumbu X ──────────────────────────
@@ -176,22 +261,36 @@ class _ParameterChartView extends StatelessWidget {
     return '$hh:$mm';
   }
 
-  /// Format selisih waktu untuk label prediksi → "T+5m" atau "T+30s"
-  String _formatOffset(Duration interval, int forecastStep) {
-    final total = interval * forecastStep;
-    if (total.inMinutes >= 1) {
-      return 'T+${total.inMinutes}m';
-    }
-    return 'T+${total.inSeconds}s';
-  }
-
   /// Hitung interval antar pembacaan dari dua titik terakhir.
   /// Fallback ke 5 menit jika data kurang dari 2 titik.
   Duration _readingInterval() {
-    if (timestamps.length >= 2) {
-      return timestamps.last.difference(timestamps[timestamps.length - 2]).abs();
+    return forecast?.sensorInterval ?? const Duration(minutes: 10);
+  }
+
+  String _formatValue(double value) {
+    final suffix = unit.isEmpty ? '' : ' $unit';
+    return '${value.toStringAsFixed(decimalPlaces)}$suffix';
+  }
+
+  List<FlSpot> _buildForecastSpots(DESResult? result) {
+    if (result == null || result.forecast.isEmpty || history.isEmpty) {
+      return const <FlSpot>[];
     }
-    return const Duration(minutes: 5);
+
+    final lastHistoryIndex = history.length - 1;
+    final spots = <FlSpot>[];
+
+    for (var i = 0; i < result.forecast.length; i++) {
+      if (i >= result.forecastPeriods.length) break;
+      spots.add(
+        FlSpot(
+          (lastHistoryIndex + result.forecastPeriods[i]).toDouble(),
+          result.forecast[i].clamp(yMin, yMax),
+        ),
+      );
+    }
+
+    return spots;
   }
 
   /// Widget teks yang dirotasi ~25° untuk menghindari tabrakan antar label.
@@ -224,19 +323,20 @@ class _ParameterChartView extends StatelessWidget {
     }).toList();
 
     // Build spots for DES forecast (appended after historical)
-    final forecastSpots = forecast == null
-        ? <FlSpot>[]
-        : forecast!.forecast.asMap().entries.map((e) {
-            return FlSpot(
-              (history.length + e.key).toDouble(),
-              e.value.clamp(yMin, yMax),
-            );
-          }).toList();
+    final forecastSpots = _buildForecastSpots(forecast);
+    final forecastLineSpots =
+        forecastSpots.isNotEmpty ? [histSpots.last, ...forecastSpots] : <FlSpot>[];
+    final interval = _readingInterval();
+    final lastTimestamp = timestamps.isNotEmpty ? timestamps.last : DateTime.now();
+    final forecastLabelByX = <int, DateTime>{};
 
-    // Link last historical point to first forecast for visual continuity
-    final linkerSpots = forecastSpots.isNotEmpty
-        ? [histSpots.last, forecastSpots.first]
-        : <FlSpot>[];
+    if (forecast != null) {
+      for (var i = 0; i < forecast!.forecastPeriods.length; i++) {
+        final period = forecast!.forecastPeriods[i];
+        forecastLabelByX[history.length - 1 + period] =
+            lastTimestamp.add(interval * period);
+      }
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -308,6 +408,22 @@ class _ParameterChartView extends StatelessWidget {
                   ),
                 ),
                 borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        return LineTooltipItem(
+                          _formatValue(spot.y),
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
                 titlesData: FlTitlesData(
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
@@ -325,9 +441,13 @@ class _ParameterChartView extends StatelessWidget {
                       showTitles: true,
                       // Berikan cukup ruang vertikal untuk label yang dirotasi
                       reservedSize: 40,
+                      interval: 1,
                       getTitlesWidget: (v, meta) {
-                        final idx = v.toInt();
-                        final interval = _readingInterval();
+                        final idx = v.round();
+
+                        if ((v - idx).abs() > 0.01) {
+                          return const SizedBox.shrink();
+                        }
 
                         // ── Hitung step (interval) antar label ──────────
                         // Tampilkan maks ~5 label historis di layar
@@ -353,11 +473,12 @@ class _ParameterChartView extends StatelessWidget {
                             FontWeight.w400,
                           );
                         } else {
-                          // ── Label prediksi ────────────────────────────
-                          final forecastStep = idx - history.length + 1;
-                          // Tampilkan semua forecast (max 6 titik)
+                          final forecastTime = forecastLabelByX[idx];
+                          if (forecastTime == null) {
+                            return const SizedBox.shrink();
+                          }
                           return _rotatedLabel(
-                            _formatOffset(interval, forecastStep),
+                            _formatTime(forecastTime, interval),
                             color,
                             FontWeight.w600,
                           );
@@ -384,20 +505,10 @@ class _ParameterChartView extends StatelessWidget {
                     ),
                   ),
                   // Linker (dashed transition)
-                  if (linkerSpots.isNotEmpty)
+                  if (forecastLineSpots.isNotEmpty)
                     LineChartBarData(
-                      spots: linkerSpots,
+                      spots: forecastLineSpots,
                       isCurved: false,
-                      color: color.withOpacity(0.5),
-                      barWidth: 1.5,
-                      dashArray: [4, 4],
-                      dotData: const FlDotData(show: false),
-                    ),
-                  // DES Forecast line
-                  if (forecastSpots.isNotEmpty)
-                    LineChartBarData(
-                      spots: forecastSpots,
-                      isCurved: true,
                       color: color.withOpacity(0.65),
                       barWidth: 2,
                       dashArray: [6, 4],
@@ -477,8 +588,8 @@ class _ParameterChartView extends StatelessWidget {
     final Duration step =
         interval.inSeconds > 0 ? interval : const Duration(minutes: 15);
 
-    String periodLabel(int forecastStep) {
-      final total = step * forecastStep;
+    String periodLabel(int forecastPeriod) {
+      final total = step * forecastPeriod;
       if (total.inMinutes >= 60) {
         final h = total.inHours;
         final m = total.inMinutes % 60;
@@ -532,7 +643,9 @@ class _ParameterChartView extends StatelessWidget {
 
               // ── Data rows ────────────────────────────────
               ...forecast!.forecast.asMap().entries.map((e) {
-                final int step1 = e.key + 1;
+                final int step1 = e.key < forecast!.forecastPeriods.length
+                    ? forecast!.forecastPeriods[e.key]
+                    : e.key + 1;
                 final double val = e.value;
                 final bool isDanger = val < safeMin || val > safeMax;
 
@@ -557,7 +670,7 @@ class _ParameterChartView extends StatelessWidget {
                     ),
                     // Kolom nilai prediksi
                     _dataCell(
-                      val.toStringAsFixed(2),
+                      val.toStringAsFixed(decimalPlaces),
                       valueColor,
                       FontWeight.w700,
                     ),
