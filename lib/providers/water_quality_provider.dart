@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import '../models/water_quality_model.dart';
 import '../utils/des_algorithm.dart';
 import '../services/firebase_service.dart';
-import '../services/notification_service.dart';
 
 // ── Enum: pilihan sumber data ──────────────────────────────
 enum DataSource { firebase, simulated }
@@ -210,7 +209,6 @@ class WaterQualityProvider extends ChangeNotifier {
     _current = model;
     _computeForecasts();
     _dataVersion++;
-    _checkWarnings(model);
     notifyListeners();
   }
 
@@ -234,7 +232,6 @@ class WaterQualityProvider extends ChangeNotifier {
       _current = liveModel;
       _computeForecasts();
       _dataVersion++;
-      await _checkWarnings(liveModel);
       notifyListeners();
     } catch (e) {
       _lastError = 'Gagal mengambil history Firebase: $e';
@@ -256,15 +253,6 @@ class WaterQualityProvider extends ChangeNotifier {
     _tempForecast      = DESAlgorithm.run(temps, config: _desConfig);
     _phForecast        = DESAlgorithm.run(phs,   config: _desConfig);
     _turbidityForecast = DESAlgorithm.run(turbs,  config: _desConfig);
-  }
-
-  Future<void> _checkWarnings(WaterQualityModel model) async {
-    await NotificationService().checkLiveReading(model);
-    await NotificationService().checkForecasts(
-      tempForecast: _tempForecast,
-      phForecast: _phForecast,
-      turbidityForecast: _turbidityForecast,
-    );
   }
 
   // ── Shortcut calculateDES() standalone ───────────────────

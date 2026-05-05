@@ -1,10 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/water_quality_model.dart';
-import '../utils/des_algorithm.dart';
+
+// ── Background handler (harus top-level function) ──────────
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Background messages ditangani otomatis oleh sistem (notification payload).
+  // Simpan ke history lokal saat user buka app berikutnya via _syncFromPayload.
+}
 
 class WarningThreshold {
   static const double tempMin = 26.0;
@@ -66,7 +72,6 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  static const Duration _cooldown = Duration(minutes: 5);
   static const String _channelId = 'early_warning_channel';
   static const String _channelName = 'Early Warning System';
   static const String _channelDescription =
@@ -75,7 +80,6 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
-  final Map<String, DateTime> _lastShownAt = {};
   final StreamController<int> _unreadCountController =
       StreamController<int>.broadcast();
 
@@ -86,11 +90,12 @@ class NotificationService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // ── Local notification plugin (untuk tampilkan FCM saat foreground) ──
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const initializationSettings = InitializationSettings(
       android: androidSettings,
     );
-
     await _notifications.initialize(initializationSettings);
 
     final androidPlugin = _notifications
@@ -107,13 +112,91 @@ class NotificationService {
     );
     await androidPlugin?.requestNotificationsPermission();
 
+    // ── FCM background handler ──────────────────────────────
+    FirebaseMessaging.onBackgroundMessage(
+        firebaseMessagingBackgroundHandler);
+
+    // ── FCM foreground handler ──────────────────────────────
+    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+
+    // ── Handle message saat app dibuka dari notif ───────────
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
+
+    // ── Cek initial message (app terminated → tap notif) ────
+    final initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      await _saveMessageToHistory(initialMessage);
+    }
+
     _initialized = true;
     await refreshUnreadCount();
   }
 
+  // ── Foreground: tampilkan local notif + simpan history ────
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    await _saveMessageToHistory(message);
+
+    final data = message.data;
+    final notification = message.notification;
+    final title = notification?.title ?? data['title']?.toString() ?? 'AquaMonitor';
+    final body = notification?.body ?? data['body']?.toString() ?? '';
+    if (body.isEmpty) return;
+
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
+
+  // ── Saat user tap notif dari background ───────────────────
+  Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
+    await _saveMessageToHistory(message);
+  }
+
+  // ── Simpan FCM payload ke SharedPreferences history ───────
+  Future<void> _saveMessageToHistory(RemoteMessage message) async {
+    final data = message.data;
+    final notification = message.notification;
+
+    final body = notification?.body ?? data['body'] ?? '';
+    if (body.isEmpty) return;
+
+    final typeStr = data['type'] ?? 'danger';
+    final type = typeStr == 'warning'
+        ? NotificationHistoryType.warning
+        : NotificationHistoryType.danger;
+
+    final tsRaw = data['timestamp'];
+    final timestamp = tsRaw != null
+        ? DateTime.fromMillisecondsSinceEpoch(int.tryParse(tsRaw) ?? 0)
+        : DateTime.now();
+
+    final item = NotificationHistoryItem(
+      message: body,
+      type: type,
+      timestamp: timestamp,
+      isRead: false,
+    );
+
+    await _addHistoryItem(item);
+  }
+
+  // ── History CRUD (sama seperti sebelumnya) ────────────────
   Future<List<NotificationHistoryItem>> getHistory() async {
     final preferences = await SharedPreferences.getInstance();
-    final rawItems = preferences.getStringList(_historyKey) ?? const <String>[];
+    final rawItems =
+        preferences.getStringList(_historyKey) ?? const <String>[];
 
     final items = rawItems
         .map((raw) {
@@ -134,7 +217,8 @@ class NotificationService {
 
   Future<void> markAllAsRead() async {
     final items = await getHistory();
-    await _saveHistory(items.map((item) => item.copyWith(isRead: true)).toList());
+    await _saveHistory(
+        items.map((item) => item.copyWith(isRead: true)).toList());
   }
 
   Future<void> clearHistory() async {
@@ -151,155 +235,6 @@ class NotificationService {
   Future<int> getUnreadCount() async {
     final history = await getHistory();
     return history.where((item) => !item.isRead).length;
-  }
-
-  Future<void> checkLiveReading(WaterQualityModel data) async {
-    await initialize();
-
-    if (data.temperature < WarningThreshold.tempMin ||
-        data.temperature > WarningThreshold.tempMax) {
-      await _showWithCooldown(
-        key: 'live_temperature',
-        title: 'Bahaya: Suhu Air Tidak Aman',
-        body:
-            'Suhu saat ini ${data.temperature.toStringAsFixed(1)}°C, di luar batas aman 26-32°C.',
-        type: NotificationHistoryType.danger,
-      );
-    }
-
-    if (data.ph < WarningThreshold.phMin || data.ph > WarningThreshold.phMax) {
-      await _showWithCooldown(
-        key: 'live_ph',
-        title: 'Bahaya: pH Air Tidak Aman',
-        body:
-            'pH saat ini ${data.ph.toStringAsFixed(2)}, di luar batas aman 7.5-8.5.',
-        type: NotificationHistoryType.danger,
-      );
-    }
-
-    if (data.turbidity < WarningThreshold.turbidityMin || data.turbidity > WarningThreshold.turbidityMax) {
-      await _showWithCooldown(
-        key: 'live_turbidity',
-        title: 'Bahaya: Kekeruhan Tinggi',
-        body:
-            'Kekeruhan saat ini ${data.turbidity.toStringAsFixed(1)} NTU, melebihi batas aman 30 NTU.',
-        type: NotificationHistoryType.danger,
-      );
-    }
-  }
-
-  Future<void> checkForecasts({
-    required DESResult? tempForecast,
-    required DESResult? phForecast,
-    required DESResult? turbidityForecast,
-  }) async {
-    await initialize();
-
-    await _checkForecastRange(
-      key: 'forecast_temperature',
-      parameterName: 'Suhu',
-      unit: '°C',
-      forecast: tempForecast,
-      min: WarningThreshold.tempMin,
-      max: WarningThreshold.tempMax,
-      decimals: 1,
-    );
-
-    await _checkForecastRange(
-      key: 'forecast_ph',
-      parameterName: 'pH',
-      unit: '',
-      forecast: phForecast,
-      min: WarningThreshold.phMin,
-      max: WarningThreshold.phMax,
-      decimals: 2,
-    );
-
-    await _checkForecastRange(
-      key: 'forecast_turbidity',
-      parameterName: 'Kekeruhan',
-      unit: 'NTU',
-      forecast: turbidityForecast,
-      min: WarningThreshold.turbidityMin,
-      max: WarningThreshold.turbidityMax,
-      decimals: 1,
-    );
-  }
-
-  Future<void> _checkForecastRange({
-    required String key,
-    required String parameterName,
-    required String unit,
-    required DESResult? forecast,
-    double? min,
-    double? max,
-    required int decimals,
-  }) async {
-    final values = forecast?.forecast ?? const <double>[];
-
-    for (var i = 0; i < values.length; i++) {
-      final value = values[i];
-      final belowMin = min != null && value < min;
-      final aboveMax = max != null && value > max;
-
-      if (!belowMin && !aboveMax) continue;
-
-      final formattedValue = value.toStringAsFixed(decimals);
-      final unitSuffix = unit.isEmpty ? '' : unit;
-      final direction = belowMin ? 'turun ke' : 'menyentuh';
-      final offset = i < (forecast?.forecastOffsets.length ?? 0)
-          ? forecast!.forecastOffsets[i]
-          : Duration(minutes: (i + 1) * 10);
-      final offsetText = offset.inMinutes >= 60
-          ? '${offset.inHours} jam ${offset.inMinutes % 60} menit'
-          : '${offset.inMinutes} menit';
-
-      await _showWithCooldown(
-        key: key,
-        title: 'Peringatan Dini: $parameterName',
-        body:
-            'Peringatan Dini: $parameterName diprediksi akan $direction $formattedValue$unitSuffix dalam $offsetText ke depan!',
-        type: NotificationHistoryType.warning,
-      );
-      return;
-    }
-  }
-
-  Future<void> _showWithCooldown({
-    required String key,
-    required String title,
-    required String body,
-    required NotificationHistoryType type,
-  }) async {
-    final now = DateTime.now();
-    final lastShown = _lastShownAt[key];
-
-    if (lastShown != null && now.difference(lastShown) < _cooldown) return;
-
-    _lastShownAt[key] = now;
-    await _addHistoryItem(
-      NotificationHistoryItem(
-        message: body,
-        type: type,
-        timestamp: now,
-        isRead: false,
-      ),
-    );
-
-    await _notifications.show(
-      key.hashCode & 0x7fffffff,
-      title,
-      body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: _channelDescription,
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      ),
-    );
   }
 
   Future<void> _addHistoryItem(NotificationHistoryItem item) async {
