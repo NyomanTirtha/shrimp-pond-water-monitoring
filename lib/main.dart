@@ -26,9 +26,12 @@ void main() async {
   await NotificationService().initialize();
 
   // Edge-to-edge mode: buat system nav bar transparan
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.manual,
+    overlays: SystemUiOverlay.values,
+  );
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarColor: AppTheme.cardWhite,
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
@@ -91,48 +94,43 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }
 
   Widget _buildBottomNav(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.cardWhite,
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryBlue.withOpacity(0.12),
+            color: AppTheme.primaryBlue.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (idx) => setState(() => _currentIndex = idx),
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard_rounded),
-                activeIcon: Icon(Icons.dashboard_rounded),
-                label: 'Dashboard',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.show_chart_rounded),
-                activeIcon: Icon(Icons.show_chart_rounded),
-                label: 'Prediksi',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.info_outline_rounded),
-                activeIcon: Icon(Icons.info_rounded),
-                label: 'Info',
-              ),
-            ],
-          ),
-          // Isi area bawah (gesture bar) dengan warna putih
-          SizedBox(
-            height: bottomPadding,
-            child: const ColoredBox(color: AppTheme.cardWhite),
-          ),
-        ],
+      child: SafeArea(
+        top: false,
+        left: true,
+        right: true,
+        bottom: true,
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (idx) => setState(() => _currentIndex = idx),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_rounded),
+              activeIcon: Icon(Icons.dashboard_rounded),
+              label: 'Dashboard',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.show_chart_rounded),
+              activeIcon: Icon(Icons.show_chart_rounded),
+              label: 'Prediksi',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.info_outline_rounded),
+              activeIcon: Icon(Icons.info_rounded),
+              label: 'Info',
+            ),
+          ],
+        ),
       ),
     );
   }

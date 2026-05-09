@@ -47,31 +47,37 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
           ),
         ],
       ),
-      body: FutureBuilder<List<NotificationHistoryItem>>(
-        future: _historyFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: SafeArea(
+        top: false,
+        left: true,
+        right: true,
+        bottom: true,
+        child: FutureBuilder<List<NotificationHistoryItem>>(
+          future: _historyFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final history = snapshot.data ?? const <NotificationHistoryItem>[];
+            final history = snapshot.data ?? const <NotificationHistoryItem>[];
 
-          if (history.isEmpty) {
-            return _buildEmptyState();
-          }
+            if (history.isEmpty) {
+              return _buildEmptyState();
+            }
 
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: history.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                return _buildHistoryCard(history[index]);
-              },
-            ),
-          );
-        },
+            return RefreshIndicator(
+              onRefresh: _reload,
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: history.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  return _buildHistoryCard(history[index]);
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }

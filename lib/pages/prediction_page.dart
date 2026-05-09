@@ -118,60 +118,60 @@ class _PredictionPageState extends State<PredictionPage>
               ],
             ),
           ),
-          body: snapshot.isLoading && snapshot.temperatures.isEmpty
-              ? _buildLoading(snapshot.statusMessage)
-              : snapshot.temperatures.isEmpty
-                  ? _buildEmptyState(snapshot.statusMessage)
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _ParameterChartView(
-                      label: 'Suhu Air (°C)',
-                      color: const Color(0xFFFF6B6B),
-                      history: snapshot.temperatures,
-                      timestamps: snapshot.timestamps,
-                      forecast: snapshot.tempForecast,
-                      currentValue: snapshot.currentTemperature,
-                      parameterName: 'Suhu Air',
-                      unit: '°C',
-                      safeMin: 26,
-                      safeMax: 32,
-                      yMin: 20,
-                      yMax: 40,
-                      decimalPlaces: 1,
-                    ),
-                    _ParameterChartView(
-                      label: 'pH Air',
-                      color: const Color(0xFF6BCB77),
-                      history: snapshot.phs,
-                      timestamps: snapshot.timestamps,
-                      forecast: snapshot.phForecast,
-                      currentValue: snapshot.currentPh,
-                      parameterName: 'pH Air',
-                      unit: '',
-                      safeMin: 7.5,
-                      safeMax: 8.5,
-                      yMin: 6,
-                      yMax: 10,
-                      decimalPlaces: 2,
-                    ),
-                    _ParameterChartView(
-                      label: 'Kekeruhan (NTU)',
-                      color: AppTheme.accentTeal,
-                      history: snapshot.turbidities,
-                      timestamps: snapshot.timestamps,
-                      forecast: snapshot.turbidityForecast,
-                      currentValue: snapshot.currentTurbidity,
-                      parameterName: 'Kekeruhan',
-                      unit: 'NTU',
-                      safeMin: 30,
-                      safeMax: 100,
-                      yMin: 0,
-                      yMax: 160,
-                      decimalPlaces: 1,
-                    ),
-                  ],
-                ),
+          body: SafeArea(
+            top: false,
+            left: true,
+            right: true,
+            bottom: false,
+            child: snapshot.isLoading && snapshot.temperatures.isEmpty
+                ? _buildLoading(snapshot.statusMessage)
+                : snapshot.temperatures.isEmpty
+                    ? _buildEmptyState(snapshot.statusMessage)
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _ParameterChartView(
+                            label: 'Suhu Air (°C)',
+                            color: const Color(0xFFFF6B6B),
+                            history: snapshot.temperatures,
+                            timestamps: snapshot.timestamps,
+                            forecast: snapshot.tempForecast,
+                            currentValue: snapshot.currentTemperature,
+                            parameterName: 'Suhu Air',
+                            unit: '°C',
+                            safeMin: 26,
+                            safeMax: 32,
+                            decimalPlaces: 1,
+                          ),
+                          _ParameterChartView(
+                            label: 'pH Air',
+                            color: const Color(0xFF6BCB77),
+                            history: snapshot.phs,
+                            timestamps: snapshot.timestamps,
+                            forecast: snapshot.phForecast,
+                            currentValue: snapshot.currentPh,
+                            parameterName: 'pH Air',
+                            unit: '',
+                            safeMin: 7.5,
+                            safeMax: 8.5,
+                            decimalPlaces: 2,
+                          ),
+                          _ParameterChartView(
+                            label: 'Kekeruhan (NTU)',
+                            color: AppTheme.accentTeal,
+                            history: snapshot.turbidities,
+                            timestamps: snapshot.timestamps,
+                            forecast: snapshot.turbidityForecast,
+                            currentValue: snapshot.currentTurbidity,
+                            parameterName: 'Kekeruhan',
+                            unit: 'NTU',
+                            safeMin: 30,
+                            safeMax: 100,
+                            decimalPlaces: 1,
+                          ),
+                        ],
+                      ),
+          ),
         );
       },
     );
@@ -228,8 +228,6 @@ class _ParameterChartView extends StatelessWidget {
   final String unit;
   final double safeMin;
   final double safeMax;
-  final double yMin;
-  final double yMax;
   final int decimalPlaces;
 
   const _ParameterChartView({
@@ -243,8 +241,6 @@ class _ParameterChartView extends StatelessWidget {
     required this.unit,
     required this.safeMin,
     required this.safeMax,
-    required this.yMin,
-    required this.yMax,
     required this.decimalPlaces,
   });
 
@@ -272,6 +268,42 @@ class _ParameterChartView extends StatelessWidget {
     return '${value.toStringAsFixed(decimalPlaces)}$suffix';
   }
 
+  List<double> _chartValues() {
+    final values = <double>[
+      ...history.where((value) => value.isFinite),
+    ];
+    final prediction = forecast?.forecast.where((value) => value.isFinite);
+    if (prediction != null) {
+      values.addAll(prediction);
+    }
+    return values.isEmpty ? <double>[0] : values;
+  }
+
+  double _minValue(List<double> values) {
+    var result = values.first;
+    for (final value in values.skip(1)) {
+      if (value < result) result = value;
+    }
+    return result;
+  }
+
+  double _maxValue(List<double> values) {
+    var result = values.first;
+    for (final value in values.skip(1)) {
+      if (value > result) result = value;
+    }
+    return result;
+  }
+
+  double _axisPadding(double minValue, double maxValue) {
+    final span = maxValue - minValue;
+    if (span > 0) {
+      return span * 0.15;
+    }
+    final base = maxValue.abs() * 0.1;
+    return base > 0 ? base : 1;
+  }
+
   List<FlSpot> _buildForecastSpots(DESResult? result) {
     if (result == null || result.forecast.isEmpty || history.isEmpty) {
       return const <FlSpot>[];
@@ -285,7 +317,7 @@ class _ParameterChartView extends StatelessWidget {
       spots.add(
         FlSpot(
           (lastHistoryIndex + result.forecastPeriods[i]).toDouble(),
-          result.forecast[i].clamp(yMin, yMax),
+          result.forecast[i],
         ),
       );
     }
@@ -329,6 +361,12 @@ class _ParameterChartView extends StatelessWidget {
     final interval = _readingInterval();
     final lastTimestamp = timestamps.isNotEmpty ? timestamps.last : DateTime.now();
     final forecastLabelByX = <int, DateTime>{};
+    final chartValues = _chartValues();
+    final dataMin = _minValue(chartValues);
+    final dataMax = _maxValue(chartValues);
+    final padding = _axisPadding(dataMin, dataMax);
+    final chartMinY = dataMin - padding;
+    final chartMaxY = dataMax + padding;
 
     if (forecast != null) {
       for (var i = 0; i < forecast!.forecastPeriods.length; i++) {
@@ -397,8 +435,8 @@ class _ParameterChartView extends StatelessWidget {
             ),
             child: LineChart(
               LineChartData(
-                minY: yMin,
-                maxY: yMax,
+                minY: chartMinY,
+                maxY: chartMaxY,
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,

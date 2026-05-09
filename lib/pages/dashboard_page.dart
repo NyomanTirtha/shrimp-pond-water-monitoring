@@ -56,47 +56,53 @@ class DashboardPage extends StatelessWidget {
               _buildNotificationButton(context),
             ],
           ),
-          body: current == null && snapshot.isLoading
-              ? _buildLoading(snapshot.statusMessage)
-              : current == null
-                  ? _buildEmptyState(snapshot.statusMessage)
-              : ListView(
-                  children: [
-                    const SizedBox(height: 16),
-                    _buildSummaryBanner(context, current),
-                    const SizedBox(height: 8),
-                    ParameterCard(
-                      title: 'Suhu Air',
-                      value: current.temperature.toStringAsFixed(1),
-                      unit: '°C',
-                      icon: Icons.thermostat_rounded,
-                      status: current.temperatureStatus,
-                      safeRangeText:
-                          '${WaterThreshold.tempMin}–${WaterThreshold.tempMax} °C',
-                    ),
-                    ParameterCard(
-                      title: 'pH Air',
-                      value: current.ph.toStringAsFixed(2),
-                      unit: '',
-                      icon: Icons.science_rounded,
-                      status: current.phStatus,
-                      safeRangeText:
-                          '${WaterThreshold.phMin}–${WaterThreshold.phMax}',
-                    ),
-                    ParameterCard(
-                      title: 'Kekeruhan',
-                      value: current.turbidity.toStringAsFixed(1),
-                      unit: 'NTU',
-                      icon: Icons.water_rounded,
-                      status: current.turbidityStatus,
-                      safeRangeText:
-                          '${WaterThreshold.turbidityMin.toInt()}–${WaterThreshold.turbidityMax.toInt()} NTU',
-                    ),
-                    const SizedBox(height: 16),
-                    _buildLastUpdated(current.timestamp),
-                    const SizedBox(height: 24),
-                  ],
-                ),
+          body: SafeArea(
+            top: false,
+            left: true,
+            right: true,
+            bottom: false,
+            child: current == null && snapshot.isLoading
+                ? _buildLoading(snapshot.statusMessage)
+                : current == null
+                    ? _buildEmptyState(snapshot.statusMessage)
+                    : ListView(
+                        children: [
+                          const SizedBox(height: 16),
+                          _buildSummaryBanner(context, current),
+                          const SizedBox(height: 8),
+                          ParameterCard(
+                            title: 'Suhu Air',
+                            value: current.temperature.toStringAsFixed(1),
+                            unit: '°C',
+                            icon: Icons.thermostat_rounded,
+                            status: current.temperatureStatus,
+                            safeRangeText:
+                                '${WaterThreshold.tempMin}–${WaterThreshold.tempMax} °C',
+                          ),
+                          ParameterCard(
+                            title: 'pH Air',
+                            value: current.ph.toStringAsFixed(2),
+                            unit: '',
+                            icon: Icons.science_rounded,
+                            status: current.phStatus,
+                            safeRangeText:
+                                '${WaterThreshold.phMin}–${WaterThreshold.phMax}',
+                          ),
+                          ParameterCard(
+                            title: 'Kekeruhan',
+                            value: current.turbidity.toStringAsFixed(1),
+                            unit: 'NTU',
+                            icon: Icons.water_rounded,
+                            status: current.turbidityStatus,
+                            safeRangeText:
+                                '${WaterThreshold.turbidityMin.toInt()}–${WaterThreshold.turbidityMax.toInt()} NTU',
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLastUpdated(current.timestamp),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+          ),
         );
       },
     );
