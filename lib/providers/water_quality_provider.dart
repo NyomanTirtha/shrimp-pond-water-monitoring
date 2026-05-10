@@ -30,14 +30,39 @@ class WaterQualityProvider extends ChangeNotifier {
   static const DataSource _dataSource = DataSource.firebase;
 
   // ── Konfigurasi DES ────────────────────────────────────────
-  DESConfig _desConfig = const DESConfig(alpha: 0.5, beta: 0.5);
-  DESConfig get desConfig => _desConfig;
+  DESConfig _tempDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
+  DESConfig _phDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
+  DESConfig _turbidityDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
+
+  DESConfig get tempDesConfig => _tempDesConfig;
+  DESConfig get phDesConfig => _phDesConfig;
+  DESConfig get turbidityDesConfig => _turbidityDesConfig;
 
   int _dataVersion = 0;
   int get dataVersion => _dataVersion;
 
-  void updateDESConfig({required double alpha, required double beta}) {
-    _desConfig = DESConfig(
+  void updateTempDESConfig({required double alpha, required double beta}) {
+    _tempDesConfig = DESConfig(
+      alpha: alpha.clamp(0.01, 0.99),
+      beta:  beta.clamp(0.01, 0.99),
+    );
+    _computeForecasts();
+    _dataVersion++;
+    notifyListeners();
+  }
+
+  void updatePhDESConfig({required double alpha, required double beta}) {
+    _phDesConfig = DESConfig(
+      alpha: alpha.clamp(0.01, 0.99),
+      beta:  beta.clamp(0.01, 0.99),
+    );
+    _computeForecasts();
+    _dataVersion++;
+    notifyListeners();
+  }
+
+  void updateTurbidityDESConfig({required double alpha, required double beta}) {
+    _turbidityDesConfig = DESConfig(
       alpha: alpha.clamp(0.01, 0.99),
       beta:  beta.clamp(0.01, 0.99),
     );
@@ -250,14 +275,18 @@ class WaterQualityProvider extends ChangeNotifier {
     final phs   = _history.map((h) => h.ph).toList();
     final turbs = _history.map((h) => h.turbidity).toList();
 
-    _tempForecast      = DESAlgorithm.run(temps, config: _desConfig);
-    _phForecast        = DESAlgorithm.run(phs,   config: _desConfig);
-    _turbidityForecast = DESAlgorithm.run(turbs,  config: _desConfig);
+    _tempForecast      = DESAlgorithm.run(temps, config: _tempDesConfig);
+    _phForecast        = DESAlgorithm.run(phs,   config: _phDesConfig);
+    _turbidityForecast = DESAlgorithm.run(turbs, config: _turbidityDesConfig);
   }
 
   // ── Shortcut calculateDES() standalone ───────────────────
-  List<double> getPredictions(List<double> dataHistoris) =>
-      calculateDES(dataHistoris, config: _desConfig);
+  List<double> getTempPredictions(List<double> dataHistoris) =>
+      calculateDES(dataHistoris, config: _tempDesConfig);
+  List<double> getPhPredictions(List<double> dataHistoris) =>
+      calculateDES(dataHistoris, config: _phDesConfig);
+  List<double> getTurbidityPredictions(List<double> dataHistoris) =>
+      calculateDES(dataHistoris, config: _turbidityDesConfig);
 
   // ==========================================================
   // DISPOSE
