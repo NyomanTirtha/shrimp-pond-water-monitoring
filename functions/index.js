@@ -1,5 +1,6 @@
 const admin = require("firebase-admin");
-const functions = require("firebase-functions");
+// firebase-functions v7: API 1st gen (functions.database.ref) ada di subpath /v1.
+const functions = require("firebase-functions/v1");
 
 admin.initializeApp();
 
@@ -31,44 +32,70 @@ exports.onSmartBuoyLiveUpdate = functions.database
     await maybeSendForecastAlerts(now);
   });
 
+// ── Live: kumpulkan semua parameter bahaya → kirim 1 notif gabungan ──
 async function maybeSendLiveAlerts(data, now) {
-  await maybeSend(
-    "live_temperature",
-    data.temp,
-    THRESHOLDS.temp,
-    now,
-    (value, t) => ({
+  const checks = [
+    {
+      value: data.temp,
+      threshold: THRESHOLDS.temp,
       title: "Bahaya: Suhu Air Tidak Aman",
-      body: `Suhu saat ini ${value.toFixed(t.decimals)}${t.unit}, di luar batas aman 26-32°C.`,
-      type: "danger",
-    })
-  );
-
-  await maybeSend(
-    "live_ph",
-    data.pH,
-    THRESHOLDS.pH,
-    now,
-    (value, t) => ({
+      body: (v, t) =>
+        `Suhu saat ini ${v.toFixed(t.decimals)}${t.unit}, di luar batas aman 26-32°C.`,
+    },
+    {
+      value: data.pH,
+      threshold: THRESHOLDS.pH,
       title: "Bahaya: pH Air Tidak Aman",
-      body: `pH saat ini ${value.toFixed(t.decimals)}, di luar batas aman 7.5-8.5.`,
-      type: "danger",
-    })
-  );
-
-  await maybeSend(
-    "live_turbidity",
-    data.turb,
-    THRESHOLDS.turb,
-    now,
-    (value, t) => ({
+      body: (v, t) =>
+        `pH saat ini ${v.toFixed(t.decimals)}, di luar batas aman 7.5-8.5.`,
+    },
+    {
+      value: data.turb,
+      threshold: THRESHOLDS.turb,
       title: "Bahaya: Kekeruhan Tinggi",
-      body: `Kekeruhan saat ini ${value.toFixed(t.decimals)}${t.unit}, melebihi batas aman 30 NTU.`,
-      type: "danger",
-    })
-  );
+      body: (v, t) =>
+        `Kekeruhan saat ini ${v.toFixed(t.decimals)}${t.unit}, melebihi batas aman 30 NTU.`,
+    },
+  ];
+
+  const breaches = [];
+  for (const check of checks) {
+    const value = Number(check.value);
+    if (!Number.isFinite(value)) {
+      console.log("[EWS] Skip invalid value", {
+        label: check.threshold.label,
+        rawValue: check.value,
+      });
+      continue;
+    }
+    if (value >= check.threshold.min && value <= check.threshold.max) continue;
+    breaches.push({
+      label: check.threshold.label,
+      title: check.title,
+      body: check.body(value, check.threshold),
+    });
+  }
+
+  if (breaches.length === 0) {
+    console.log("[EWS] Live: all parameters in safe range");
+    return;
+  }
+
+  console.log("[EWS] Live danger detected", {
+    params: breaches.map((b) => b.label),
+  });
+
+  const title =
+    breaches.length === 1
+      ? breaches[0].title
+      : "Bahaya: Kualitas Air Tidak Aman";
+  const body = breaches.map((b) => b.body).join("\n");
+  const labels = breaches.map((b) => b.label);
+
+  await sendWithCooldown("live_alerts", now, title, body, "danger", labels);
 }
 
+// ── Forecast: kumpulkan semua prediksi keluar batas → 1 notif gabungan ──
 async function maybeSendForecastAlerts(now) {
   const historySnap = await db.ref("/smart_buoy/history").limitToLast(24).get();
   const history = historySnap.val() || {};
@@ -77,61 +104,76 @@ async function maybeSendForecastAlerts(now) {
     .sort((a, b) => a.ts - b.ts);
   if (readings.length < 2) return;
 
-  await maybeSendForecast("forecast_temperature", readings.map((r) => Number(r.temp)), THRESHOLDS.temp, now);
-  await maybeSendForecast("forecast_ph", readings.map((r) => Number(r.pH)), THRESHOLDS.pH, now);
-  await maybeSendForecast("forecast_turbidity", readings.map((r) => Number(r.turb)), THRESHOLDS.turb, now);
+  const series = {
+    temp: readings.map((r) => Number(r.temp)),
+    pH: readings.map((r) => Number(r.pH)),
+    turb: readings.map((r) => Number(r.turb)),
+  };
+
+  const breaches = [];
+  for (const param of ["temp", "pH", "turb"]) {
+    const breach = forecastBreach(series[param], THRESHOLDS[param]);
+    if (breach) breaches.push(breach);
+  }
+
+  if (breaches.length === 0) {
+    console.log("[EWS] Forecast: all parameters predicted safe");
+    return;
+  }
+
+  console.log("[EWS] Forecast breach detected", {
+    params: breaches.map((b) => b.label),
+  });
+
+  const title =
+    breaches.length === 1
+      ? `Peringatan Dini: ${breaches[0].label}`
+      : "Peringatan Dini: Kualitas Air";
+  const body = breaches.map((b) => b.body).join("\n");
+  const labels = breaches.map((b) => b.label);
+
+  await sendWithCooldown("forecast_alerts", now, title, body, "warning", labels);
 }
 
-async function maybeSendForecast(key, series, threshold, now) {
+// Kembalikan detail breach pertama dari hasil forecast, atau null jika aman.
+function forecastBreach(series, threshold) {
   const forecast = desForecast(series, 0.5, 0.5, 6);
   for (let i = 0; i < forecast.length; i += 1) {
     const value = forecast[i];
     if (value >= threshold.min && value <= threshold.max) continue;
     const direction = value < threshold.min ? "turun ke" : "menyentuh";
     const minutes = (i + 1) * 10;
-    const body = `Peringatan Dini: ${threshold.label} diprediksi akan ${direction} ${value.toFixed(threshold.decimals)}${threshold.unit} dalam ${minutes} menit ke depan!`;
-    await sendWithCooldown(key, now, "Peringatan Dini: " + threshold.label, body, "warning");
-    return;
+    return {
+      label: threshold.label,
+      body: `${threshold.label} diprediksi akan ${direction} ${value.toFixed(threshold.decimals)}${threshold.unit} dalam ${minutes} menit ke depan!`,
+    };
   }
+  return null;
 }
 
-async function maybeSend(key, rawValue, threshold, now, builder) {
-  const value = Number(rawValue);
-  if (!Number.isFinite(value)) {
-    console.log("[EWS] Skip invalid value", { key, rawValue });
-    return;
-  }
-  if (value >= threshold.min && value <= threshold.max) {
-    console.log("[EWS] Safe range, no alert", {
-      key,
-      value,
-      min: threshold.min,
-      max: threshold.max,
-    });
-    return;
-  }
-
-  console.log("[EWS] Danger detected", {
-    key,
-    value,
-    min: threshold.min,
-    max: threshold.max,
-  });
-
-  const msg = builder(value, threshold);
-  await sendWithCooldown(key, now, msg.title, msg.body, msg.type);
-}
-
-async function sendWithCooldown(key, now, title, body, type) {
+async function sendWithCooldown(key, now, title, body, type, labels) {
+  // Signature = kumpulan parameter yang bermasalah, agar perubahan kondisi
+  // (mis. pH ikut bahaya) tetap memicu notif baru walau cooldown aktif.
+  const signature = labels.slice().sort().join(",");
   const stateRef = db.ref(`/notification_state/${key}`);
   const snapshot = await stateRef.get();
   const lastSentAt = snapshot.child("lastSentAt").val() || 0;
-  if (now - lastSentAt < COOL_DOWN_MS) {
+  const lastSignature = snapshot.child("signature").val() || "";
+
+  const cooldownActive = now - lastSentAt < COOL_DOWN_MS;
+  if (cooldownActive && signature === lastSignature) {
     console.log("[EWS] Cooldown active, skip send", {
       key,
       remainingMs: COOL_DOWN_MS - (now - lastSentAt),
     });
     return;
+  }
+  if (cooldownActive && signature !== lastSignature) {
+    console.log("[EWS] Cooldown active but breach set changed, sending", {
+      key,
+      lastSignature,
+      signature,
+    });
   }
 
   const tokensSnap = await db.ref("/devices").get();
@@ -175,7 +217,7 @@ async function sendWithCooldown(key, now, title, body, type) {
     console.log("[EWS] Failed token responses", { key, errors });
   }
 
-  await stateRef.set({ lastSentAt: now });
+  await stateRef.set({ lastSentAt: now, signature });
 }
 
 function desForecast(values, alpha, beta, periods) {
