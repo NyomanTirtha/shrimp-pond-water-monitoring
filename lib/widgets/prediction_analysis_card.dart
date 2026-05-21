@@ -5,9 +5,10 @@
 // Parameter:
 //   parameterName  – nama parameter (e.g., "Suhu Air")
 //   unit           – satuan (e.g., "°C", "NTU")
-//   currentValue   – nilai terakhir aktual dari sensor
-//   predictedValue – nilai prediksi DES pertama (F+1)
-//   safeMin        – batas bawah aman
+//   currentValue    – nilai terakhir aktual dari sensor
+//   predictedValue  – nilai prediksi DES terdekat (periode pertama)
+//   predictionLabel – label horizon prediksi, mis. "Prediksi +30 mnt"
+//   safeMin         – batas bawah aman
 //   safeMax        – batas atas aman
 //   thresholdPct   – persentase perubahan yang dianggap "signifikan"
 //                    (default 5% dari range aman)
@@ -126,9 +127,10 @@ class PredictionAnalysisCard extends StatelessWidget {
   final String parameterName;
   final String unit;
   final double currentValue;
-  final double predictedValue;  // nilai F+1 dari DES
+  final double predictedValue;  // nilai prediksi terdekat dari DES
   final double safeMin;
   final double safeMax;
+  final String predictionLabel;
 
   const PredictionAnalysisCard({
     super.key,
@@ -138,6 +140,7 @@ class PredictionAnalysisCard extends StatelessWidget {
     required this.predictedValue,
     required this.safeMin,
     required this.safeMax,
+    required this.predictionLabel,
   });
 
   @override
@@ -282,6 +285,7 @@ class PredictionAnalysisCard extends StatelessWidget {
             predictedValue: predictedValue,
             unit: unit,
             accent: accent,
+            predictionLabel: predictionLabel,
           ),
         ],
       ),
@@ -391,12 +395,14 @@ class _ValueCompareRow extends StatelessWidget {
   final double predictedValue;
   final String unit;
   final Color accent;
+  final String predictionLabel;
 
   const _ValueCompareRow({
     required this.currentValue,
     required this.predictedValue,
     required this.unit,
     required this.accent,
+    required this.predictionLabel,
   });
 
   @override
@@ -415,7 +421,7 @@ class _ValueCompareRow extends StatelessWidget {
               size: 16, color: AppTheme.textGray),
         ),
         _ValueBox(
-          label: 'Prediksi F+1',
+          label: predictionLabel,
           value: predictedValue.toStringAsFixed(2),
           unit: unit,
           color: accent,

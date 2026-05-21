@@ -275,9 +275,37 @@ class WaterQualityProvider extends ChangeNotifier {
     final phs   = _history.map((h) => h.ph).toList();
     final turbs = _history.map((h) => h.turbidity).toList();
 
-    _tempForecast      = DESAlgorithm.run(temps, config: _tempDesConfig);
-    _phForecast        = DESAlgorithm.run(phs,   config: _phDesConfig);
-    _turbidityForecast = DESAlgorithm.run(turbs, config: _turbidityDesConfig);
+    // Interval sensor dihitung dari timestamp history agar label waktu
+    // pada grafik & tabel prediksi sesuai cadence sensor sebenarnya.
+    final interval = _computeSensorInterval();
+
+    _tempForecast = DESAlgorithm.run(temps,
+        config: _tempDesConfig.copyWith(sensorInterval: interval));
+    _phForecast = DESAlgorithm.run(phs,
+        config: _phDesConfig.copyWith(sensorInterval: interval));
+    _turbidityForecast = DESAlgorithm.run(turbs,
+        config: _turbidityDesConfig.copyWith(sensorInterval: interval));
+  }
+
+  /// Hitung interval antar pembacaan dari timestamp history (median selisih).
+  /// Median dipakai agar satu gap tak normal tidak menggeser hasil.
+  /// Fallback ke 10 menit bila data tidak memadai.
+  Duration _computeSensorInterval() {
+    const fallback = Duration(minutes: 10);
+    if (_history.length < 2) return fallback;
+
+    final gaps = <int>[];
+    for (var i = 1; i < _history.length; i++) {
+      final ms = _history[i]
+          .timestamp
+          .difference(_history[i - 1].timestamp)
+          .inMilliseconds;
+      if (ms > 0) gaps.add(ms);
+    }
+    if (gaps.isEmpty) return fallback;
+
+    gaps.sort();
+    return Duration(milliseconds: gaps[gaps.length ~/ 2]);
   }
 
   // ── Shortcut calculateDES() standalone ───────────────────

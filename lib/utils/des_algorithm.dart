@@ -29,6 +29,21 @@ class DESConfig {
        assert(beta  > 0 && beta  < 1, 'beta harus antara 0 dan 1');
 
   int get periods => forecastPeriods.length;
+
+  /// Salinan config dengan sebagian field diganti.
+  DESConfig copyWith({
+    double? alpha,
+    double? beta,
+    List<int>? forecastPeriods,
+    Duration? sensorInterval,
+  }) {
+    return DESConfig(
+      alpha: alpha ?? this.alpha,
+      beta: beta ?? this.beta,
+      forecastPeriods: forecastPeriods ?? this.forecastPeriods,
+      sensorInterval: sensorInterval ?? this.sensorInterval,
+    );
+  }
 }
 
 // ─── Model hasil DES ──────────────────────────────────────
@@ -113,6 +128,7 @@ class DESAlgorithm {
     // ── Iterasi smoothing ──────────────────────────────────
     for (int t = 0; t < data.length; t++) {
       final double prevLevel = level;
+      final double prevTrend = trend;
 
       // L_t = α · y_t + (1 − α) · (L_{t−1} + T_{t−1})
       level = alpha * data[t] + (1 - alpha) * (level + trend);
@@ -121,7 +137,7 @@ class DESAlgorithm {
       trend = beta * (level - prevLevel) + (1 - beta) * trend;
 
       // Fitted value = L_{t−1} + T_{t−1}  (prediksi satu langkah sebelumnya)
-      smoothed.add(prevLevel + trend);
+      smoothed.add(prevLevel + prevTrend);
     }
 
     // ── Forecast: ŷ_{t+m} = L_t + m · T_t ────────────────

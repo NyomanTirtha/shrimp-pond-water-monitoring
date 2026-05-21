@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import '../providers/water_quality_provider.dart';
+import '../models/water_quality_model.dart';
 import '../utils/des_algorithm.dart';
 import '../theme/app_theme.dart';
 import '../widgets/prediction_analysis_card.dart';
@@ -139,8 +140,8 @@ class _PredictionPageState extends State<PredictionPage>
                             currentValue: snapshot.currentTemperature,
                             parameterName: 'Suhu Air',
                             unit: '°C',
-                            safeMin: 26,
-                            safeMax: 32,
+                            safeMin: WaterThreshold.tempMin,
+                            safeMax: WaterThreshold.tempMax,
                             decimalPlaces: 1,
                           ),
                           _ParameterChartView(
@@ -152,8 +153,8 @@ class _PredictionPageState extends State<PredictionPage>
                             currentValue: snapshot.currentPh,
                             parameterName: 'pH Air',
                             unit: '',
-                            safeMin: 7.5,
-                            safeMax: 8.5,
+                            safeMin: WaterThreshold.phMin,
+                            safeMax: WaterThreshold.phMax,
                             decimalPlaces: 2,
                           ),
                           _ParameterChartView(
@@ -165,8 +166,8 @@ class _PredictionPageState extends State<PredictionPage>
                             currentValue: snapshot.currentTurbidity,
                             parameterName: 'Kekeruhan',
                             unit: 'NTU',
-                            safeMin: 30,
-                            safeMax: 100,
+                            safeMin: WaterThreshold.turbidityMin,
+                            safeMax: WaterThreshold.turbidityMax,
                             decimalPlaces: 1,
                           ),
                         ],
@@ -257,10 +258,28 @@ class _ParameterChartView extends StatelessWidget {
     return '$hh:$mm';
   }
 
-  /// Hitung interval antar pembacaan dari dua titik terakhir.
-  /// Fallback ke 5 menit jika data kurang dari 2 titik.
+  /// Interval antar pembacaan sensor (dihitung di provider dari timestamp
+  /// history). Fallback ke 10 menit bila belum tersedia.
   Duration _readingInterval() {
     return forecast?.sensorInterval ?? const Duration(minutes: 10);
+  }
+
+  /// Ubah jumlah periode prediksi menjadi label durasi, mis. "+30 mnt".
+  /// Fallback ke basis 15 menit bila interval sensor tak terdeteksi.
+  String _periodLabel(int forecastPeriod) {
+    final interval = _readingInterval();
+    final step =
+        interval.inSeconds > 0 ? interval : const Duration(minutes: 15);
+    final total = step * forecastPeriod;
+    if (total.inMinutes >= 60) {
+      final h = total.inHours;
+      final m = total.inMinutes % 60;
+      return m == 0 ? '+${h}j' : '+${h}j ${m}m';
+    } else if (total.inMinutes >= 1) {
+      return '+${total.inMinutes} mnt';
+    } else {
+      return '+${total.inSeconds} dtk';
+    }
   }
 
   String _formatValue(double value) {
@@ -578,6 +597,8 @@ class _ParameterChartView extends StatelessWidget {
               unit: unit,
               currentValue: currentValue,
               predictedValue: forecast!.forecast.first,
+              predictionLabel:
+                  'Prediksi ${_periodLabel(forecast!.forecastPeriods.firstWhere((m) => m > 0, orElse: () => 1))}',
               safeMin: safeMin,
               safeMax: safeMax,
             ),
@@ -619,26 +640,6 @@ class _ParameterChartView extends StatelessWidget {
   }
 
   Widget _buildForecastTable(Color color, double safeMin, double safeMax) {
-    final interval = _readingInterval();
-
-    // ── Hitung durasi per periode untuk label ─────────────────
-    // Jika interval tidak terdeteksi (< 1 dtk), fallback ke 15 menit.
-    final Duration step =
-        interval.inSeconds > 0 ? interval : const Duration(minutes: 15);
-
-    String periodLabel(int forecastPeriod) {
-      final total = step * forecastPeriod;
-      if (total.inMinutes >= 60) {
-        final h = total.inHours;
-        final m = total.inMinutes % 60;
-        return m == 0 ? '+${h}j' : '+${h}j ${m}m';
-      } else if (total.inMinutes >= 1) {
-        return '+${total.inMinutes} mnt';
-      } else {
-        return '+${total.inSeconds} dtk';
-      }
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -702,7 +703,7 @@ class _ParameterChartView extends StatelessWidget {
                   children: [
                     // Kolom waktu
                     _dataCell(
-                      periodLabel(step1),
+                      _periodLabel(step1),
                       AppTheme.textGray,
                       FontWeight.w500,
                     ),
