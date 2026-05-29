@@ -4,7 +4,7 @@
 //
 // Parameter:
 //   parameterName  – nama parameter (e.g., "Suhu Air")
-//   unit           – satuan (e.g., "°C", "NTU")
+//   unit           – satuan (e.g., "°C", "ppm")
 //   currentValue    – nilai terakhir aktual dari sensor
 //   predictedValue  – nilai prediksi DES terdekat (periode pertama)
 //   predictionLabel – label horizon prediksi, mis. "Prediksi +30 mnt"

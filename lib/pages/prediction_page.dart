@@ -17,14 +17,14 @@ class _PredictionSnapshot {
   final bool isLoading;
   final List<double> temperatures;
   final List<double> phs;
-  final List<double> turbidities;
+  final List<double> tdsList;
   final List<DateTime> timestamps;
   final DESResult? tempForecast;
   final DESResult? phForecast;
-  final DESResult? turbidityForecast;
+  final DESResult? tdsForecast;
   final double currentTemperature;
   final double currentPh;
-  final double currentTurbidity;
+  final double currentTds;
   final String statusMessage;
 
   const _PredictionSnapshot({
@@ -32,14 +32,14 @@ class _PredictionSnapshot {
     required this.isLoading,
     required this.temperatures,
     required this.phs,
-    required this.turbidities,
+    required this.tdsList,
     required this.timestamps,
     required this.tempForecast,
     required this.phForecast,
-    required this.turbidityForecast,
+    required this.tdsForecast,
     required this.currentTemperature,
     required this.currentPh,
-    required this.currentTurbidity,
+    required this.currentTds,
     required this.statusMessage,
   });
 }
@@ -53,7 +53,7 @@ class PredictionPage extends StatefulWidget {
 
 class _PredictionPageState extends State<PredictionPage>
     with SingleTickerProviderStateMixin {
-  // 0 = Suhu, 1 = pH, 2 = Kekeruhan
+  // 0 = Suhu, 1 = pH, 2 = TDS
   int _selectedParameter = 0;
   late TabController _tabController;
 
@@ -82,14 +82,14 @@ class _PredictionPageState extends State<PredictionPage>
         isLoading: provider.isLoading,
         temperatures: provider.history.map((h) => h.temperature).toList(),
         phs: provider.history.map((h) => h.ph).toList(),
-        turbidities: provider.history.map((h) => h.turbidity).toList(),
+        tdsList: provider.history.map((h) => h.tds).toList(),
         timestamps: provider.history.map((h) => h.timestamp).toList(),
         tempForecast: provider.tempForecast,
         phForecast: provider.phForecast,
-        turbidityForecast: provider.turbidityForecast,
+        tdsForecast: provider.tdsForecast,
         currentTemperature: provider.current?.temperature ?? 0,
         currentPh: provider.current?.ph ?? 0,
-        currentTurbidity: provider.current?.turbidity ?? 0,
+        currentTds: provider.current?.tds ?? 0,
         statusMessage: provider.statusMessage,
       ),
       shouldRebuild: (previous, next) =>
@@ -115,7 +115,7 @@ class _PredictionPageState extends State<PredictionPage>
               tabs: const [
                 Tab(text: 'Suhu'),
                 Tab(text: 'pH'),
-                Tab(text: 'Kekeruhan'),
+                Tab(text: 'TDS'),
               ],
             ),
           ),
@@ -158,16 +158,16 @@ class _PredictionPageState extends State<PredictionPage>
                             decimalPlaces: 2,
                           ),
                           _ParameterChartView(
-                            label: 'Kekeruhan (NTU)',
+                            label: 'TDS (ppm)',
                             color: AppTheme.accentTeal,
-                            history: snapshot.turbidities,
+                            history: snapshot.tdsList,
                             timestamps: snapshot.timestamps,
-                            forecast: snapshot.turbidityForecast,
-                            currentValue: snapshot.currentTurbidity,
-                            parameterName: 'Kekeruhan',
-                            unit: 'NTU',
-                            safeMin: WaterThreshold.turbidityMin,
-                            safeMax: WaterThreshold.turbidityMax,
+                            forecast: snapshot.tdsForecast,
+                            currentValue: snapshot.currentTds,
+                            parameterName: 'TDS',
+                            unit: 'ppm',
+                            safeMin: WaterThreshold.tdsMin,
+                            safeMax: WaterThreshold.tdsMax,
                             decimalPlaces: 1,
                           ),
                         ],

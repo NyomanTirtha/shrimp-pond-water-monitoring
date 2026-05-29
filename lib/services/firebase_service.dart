@@ -8,13 +8,13 @@
 //   ├── live/
 //   │   ├── temp : 29.5
 //   │   ├── pH   : 7.8
-//   │   ├── turb : 65.2
+//   │   ├── tds  : 613.0   (ppm — DFRobot SEN0244)
 //   │   └── ts   : 1714920000000
 //   └── history/
 //       └── -PushIdRandom/
 //           ├── temp
 //           ├── pH
-//           ├── turb
+//           ├── tds
 //           └── ts
 //
 // Ubah kLivePath / kHistoryPath jika struktur Firebase Anda berbeda.
@@ -71,9 +71,9 @@ class FirebaseService {
             // ── Validasi: field wajib harus ada ───────────
             if (!map.containsKey('temp') ||
                 !map.containsKey('pH') ||
-                !map.containsKey('turb')) {
+                !map.containsKey('tds')) {
               sink.addError(
-                'Field Firebase wajib tidak lengkap. Butuh: temp, pH, turb',
+                'Field Firebase wajib tidak lengkap. Butuh: temp, pH, tds',
               );
               return;
             }
@@ -144,7 +144,7 @@ class FirebaseService {
     return WaterQualityModel(
       temperature: _toDouble(map['temp']),
       ph: _toDouble(map['pH']),
-      turbidity: _toDouble(map['turb']),
+      tds: _toDouble(map['tds']),
       timestamp: timestamp > 0
           ? DateTime.fromMillisecondsSinceEpoch(timestamp)
           : DateTime.now(),
@@ -155,7 +155,7 @@ class FirebaseService {
     return WaterQualityModel(
       temperature: 29.0,
       ph: 7.8,
-      turbidity: 60.0,
+      tds: 613.0,
       timestamp: DateTime.now(),
     );
   }
@@ -166,12 +166,12 @@ class FirebaseService {
   Future<void> writeDummyData({
     required double suhu,
     required double ph,
-    required double kekeruhan,
+    required double tds,
   }) async {
     await _liveRef.set({
       'temp': suhu,
       'pH': ph,
-      'turb': kekeruhan,
+      'tds': tds,
       'ts': DateTime.now().millisecondsSinceEpoch,
     });
   }

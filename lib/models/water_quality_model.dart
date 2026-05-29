@@ -20,22 +20,24 @@ class WaterThreshold {
   static const double phMin = 7.5;
   static const double phMax = 8.5;
 
-  // Kekeruhan (Turbidity) in NTU
-  static const double turbidityMin = 30.0;
-  static const double turbidityMax = 100.0;
+  // TDS / Padatan Terlarut (ppm) — tambak udang dekat laut
+  // Baseline pengukuran air tambak: ~613 ppm
+  // Sensor DFRobot SEN0244 range 0-1000 ppm (akurasi ±10% FS @25°C)
+  static const double tdsMin = 300.0;
+  static const double tdsMax = 800.0;
 }
 
 /// A single snapshot of all sensor readings.
 class WaterQualityModel {
   final double temperature; // °C
   final double ph; // dimensionless
-  final double turbidity; // NTU
+  final double tds; // ppm (mg/L)
   final DateTime timestamp;
 
   const WaterQualityModel({
     required this.temperature,
     required this.ph,
-    required this.turbidity,
+    required this.tds,
     required this.timestamp,
   });
 
@@ -58,31 +60,17 @@ class WaterQualityModel {
     return ParameterStatus.safe;
   }
 
-  ParameterStatus get turbidityStatus {
-    if (turbidity < WaterThreshold.turbidityMin ||
-        turbidity > WaterThreshold.turbidityMax) {
+  ParameterStatus get tdsStatus {
+    if (tds < WaterThreshold.tdsMin || tds > WaterThreshold.tdsMax) {
       return ParameterStatus.danger;
     }
     return ParameterStatus.safe;
   }
 
-  /// Quick factory to build from a Firebase Realtime Database map.
-  /// Connect to Firebase later by calling this in your provider.
-  factory WaterQualityModel.fromMap(Map<dynamic, dynamic> map) {
-    return WaterQualityModel(
-      temperature: (map['suhu'] as num).toDouble(),
-      ph: (map['ph'] as num).toDouble(),
-      turbidity: (map['kekeruhan'] as num).toDouble(),
-      timestamp: DateTime.fromMillisecondsSinceEpoch(
-        (map['timestamp'] as int?) ?? 0,
-      ),
-    );
-  }
-
   bool hasSameSensorValues(WaterQualityModel other) {
     return temperature == other.temperature &&
         ph == other.ph &&
-        turbidity == other.turbidity;
+        tds == other.tds;
   }
 }
 

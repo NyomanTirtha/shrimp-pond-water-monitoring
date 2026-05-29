@@ -17,8 +17,9 @@ class WarningThreshold {
   static const double tempMax = 32.0;
   static const double phMin = 7.5;
   static const double phMax = 8.5;
-  static const double turbidityMin = 30.0;
-  static const double turbidityMax = 100.0;
+  // TDS (ppm) — sinkron dengan WaterThreshold di water_quality_model.dart
+  static const double tdsMin = 300.0;
+  static const double tdsMax = 800.0;
 }
 
 enum NotificationHistoryType { danger, warning }

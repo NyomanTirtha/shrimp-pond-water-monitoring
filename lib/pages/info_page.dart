@@ -225,7 +225,7 @@ class InfoPage extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Algoritma ini membantu petambak mengantisipasi '
-                        'perubahan Suhu, pH, dan Kekeruhan secara dini, '
+                        'perubahan Suhu, pH, dan TDS secara dini, '
                         'sehingga tindakan pencegahan dapat dilakukan '
                         'sebelum kondisi air menjadi berbahaya bagi udang.',
                         style: TextStyle(
@@ -302,13 +302,13 @@ class InfoPage extends StatelessWidget {
         note: 'Mencegah stress dan kematian udang',
       ),
       _ThresholdRow(
-        parameter: 'Kekeruhan',
-        unit: 'NTU',
-        min: WaterThreshold.turbidityMin,
-        max: WaterThreshold.turbidityMax,
-        icon: Icons.water_rounded,
+        parameter: 'TDS',
+        unit: 'ppm',
+        min: WaterThreshold.tdsMin,
+        max: WaterThreshold.tdsMax,
+        icon: Icons.opacity_rounded,
         color: AppTheme.accentTeal,
-        note: 'Menunjukkan kepadatan fitoplankton',
+        note: 'Total padatan terlarut — indikator salinitas & nutrisi air',
       ),
     ];
 
@@ -432,7 +432,7 @@ class InfoPage extends StatelessWidget {
                     fontSize: 13, color: AppTheme.textGray, height: 1.6),
               ),
               const SizedBox(height: 12),
-              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, Kekeruhan'),
+              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, TDS'),
               _infoRow(Icons.cloud_rounded, 'Backend', 'Firebase Realtime DB'),
               _infoRow(Icons.analytics_rounded, 'Algoritma',
                   'Double Exponential Smoothing'),
