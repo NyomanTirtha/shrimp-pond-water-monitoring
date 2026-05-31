@@ -225,9 +225,10 @@ class InfoPage extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Algoritma ini membantu petambak mengantisipasi '
-                        'perubahan Suhu, pH, dan TDS secara dini, '
-                        'sehingga tindakan pencegahan dapat dilakukan '
-                        'sebelum kondisi air menjadi berbahaya bagi udang.',
+                        'perubahan Suhu, pH, dan Total Padatan Terlarut '
+                        'secara dini, sehingga tindakan pencegahan dapat '
+                        'dilakukan sebelum kondisi air menjadi berbahaya '
+                        'bagi udang.',
                         style: TextStyle(
                           fontSize: 12,
                           color: AppTheme.textDark,
@@ -300,15 +301,6 @@ class InfoPage extends StatelessWidget {
         icon: Icons.science_rounded,
         color: const Color(0xFF6BCB77),
         note: 'Mencegah stress dan kematian udang',
-      ),
-      _ThresholdRow(
-        parameter: 'TDS',
-        unit: 'ppm',
-        min: WaterThreshold.tdsMin,
-        max: WaterThreshold.tdsMax,
-        icon: Icons.opacity_rounded,
-        color: AppTheme.accentTeal,
-        note: 'Total padatan terlarut — indikator salinitas & nutrisi air',
       ),
     ];
 
@@ -387,14 +379,14 @@ class InfoPage extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: AppTheme.headerGradient,
-                      borderRadius: BorderRadius.circular(10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      'assets/logo-aplikasi.png',
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
                     ),
-                    child: const Icon(Icons.water_drop_rounded,
-                        color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -432,7 +424,7 @@ class InfoPage extends StatelessWidget {
                     fontSize: 13, color: AppTheme.textGray, height: 1.6),
               ),
               const SizedBox(height: 12),
-              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, TDS'),
+              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, Total Padatan Terlarut'),
               _infoRow(Icons.cloud_rounded, 'Backend', 'Firebase Realtime DB'),
               _infoRow(Icons.analytics_rounded, 'Algoritma',
                   'Double Exponential Smoothing'),

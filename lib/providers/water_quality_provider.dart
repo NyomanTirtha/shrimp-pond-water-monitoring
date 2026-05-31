@@ -32,11 +32,9 @@ class WaterQualityProvider extends ChangeNotifier {
   // ── Konfigurasi DES ────────────────────────────────────────
   DESConfig _tempDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
   DESConfig _phDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
-  DESConfig _tdsDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
 
   DESConfig get tempDesConfig => _tempDesConfig;
   DESConfig get phDesConfig => _phDesConfig;
-  DESConfig get tdsDesConfig => _tdsDesConfig;
 
   int _dataVersion = 0;
   int get dataVersion => _dataVersion;
@@ -61,16 +59,6 @@ class WaterQualityProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateTdsDESConfig({required double alpha, required double beta}) {
-    _tdsDesConfig = DESConfig(
-      alpha: alpha.clamp(0.01, 0.99),
-      beta:  beta.clamp(0.01, 0.99),
-    );
-    _computeForecasts();
-    _dataVersion++;
-    notifyListeners();
-  }
-
   // ── Data saat ini ──────────────────────────────────────────
   WaterQualityModel? _current;
   WaterQualityModel? get current => _current;
@@ -82,15 +70,12 @@ class WaterQualityProvider extends ChangeNotifier {
   // ── Hasil DES ─────────────────────────────────────────────
   DESResult? _tempForecast;
   DESResult? _phForecast;
-  DESResult? _tdsForecast;
 
   DESResult? get tempForecast => _tempForecast;
   DESResult? get phForecast   => _phForecast;
-  DESResult? get tdsForecast  => _tdsForecast;
 
   List<double> get tempPredictions => _tempForecast?.forecast ?? [];
   List<double> get phPredictions   => _phForecast?.forecast   ?? [];
-  List<double> get tdsPredictions  => _tdsForecast?.forecast  ?? [];
 
   // ── Status koneksi & loading ──────────────────────────────
   ConnectionStatus _connectionStatus = ConnectionStatus.connecting;
@@ -206,7 +191,6 @@ class WaterQualityProvider extends ChangeNotifier {
         ? WaterQualityModel(
             temperature: 29.0,
             ph: 7.8,
-            tds: 613.0,
             timestamp: DateTime.now(),
           )
         : _history.last;
@@ -217,7 +201,6 @@ class WaterQualityProvider extends ChangeNotifier {
       temperature:
           clamp(base.temperature + (_random.nextDouble() * 1.0 - 0.5), 24, 35),
       ph:  clamp(base.ph + (_random.nextDouble() * 0.3 - 0.15), 6.5, 9.5),
-      tds: clamp(base.tds + (_random.nextDouble() * 30.0 - 15.0), 200, 1000),
       timestamp: timestamp ?? DateTime.now(),
     );
   }
@@ -272,7 +255,6 @@ class WaterQualityProvider extends ChangeNotifier {
 
     final temps   = _history.map((h) => h.temperature).toList();
     final phs     = _history.map((h) => h.ph).toList();
-    final tdsList = _history.map((h) => h.tds).toList();
 
     // Interval sensor dihitung dari timestamp history agar label waktu
     // pada grafik & tabel prediksi sesuai cadence sensor sebenarnya.
@@ -282,8 +264,6 @@ class WaterQualityProvider extends ChangeNotifier {
         config: _tempDesConfig.copyWith(sensorInterval: interval));
     _phForecast = DESAlgorithm.run(phs,
         config: _phDesConfig.copyWith(sensorInterval: interval));
-    _tdsForecast = DESAlgorithm.run(tdsList,
-        config: _tdsDesConfig.copyWith(sensorInterval: interval));
   }
 
   /// Hitung interval antar pembacaan dari timestamp history (median selisih).
@@ -312,8 +292,6 @@ class WaterQualityProvider extends ChangeNotifier {
       calculateDES(dataHistoris, config: _tempDesConfig);
   List<double> getPhPredictions(List<double> dataHistoris) =>
       calculateDES(dataHistoris, config: _phDesConfig);
-  List<double> getTdsPredictions(List<double> dataHistoris) =>
-      calculateDES(dataHistoris, config: _tdsDesConfig);
 
   // ==========================================================
   // DISPOSE

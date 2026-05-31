@@ -19,11 +19,28 @@ import 'pages/info_page.dart';
 void main() async {
   // Firebase harus diinisialisasi sebelum runApp()
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await FcmService().initialize();
-  await NotificationService().initialize();
+
+  // Init Firebase core — kritikal, harus berhasil
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('[main] Firebase init failed: $e');
+  }
+
+  // Init FCM & local notif — opsional, gagal tidak boleh blok app
+  // (mis. rules write ditolak, Play Services tidak ada, dll)
+  try {
+    await FcmService().initialize();
+  } catch (e) {
+    debugPrint('[main] FCM init failed: $e');
+  }
+  try {
+    await NotificationService().initialize();
+  } catch (e) {
+    debugPrint('[main] NotificationService init failed: $e');
+  }
 
   // Edge-to-edge mode: buat system nav bar transparan
   SystemChrome.setEnabledSystemUIMode(

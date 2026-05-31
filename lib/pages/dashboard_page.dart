@@ -88,15 +88,6 @@ class DashboardPage extends StatelessWidget {
                             safeRangeText:
                                 '${WaterThreshold.phMin}–${WaterThreshold.phMax}',
                           ),
-                          ParameterCard(
-                            title: 'TDS',
-                            value: current.tds.toStringAsFixed(1),
-                            unit: 'ppm',
-                            icon: Icons.opacity_rounded,
-                            status: current.tdsStatus,
-                            safeRangeText:
-                                '${WaterThreshold.tdsMin.toInt()}–${WaterThreshold.tdsMax.toInt()} ppm',
-                          ),
                           const SizedBox(height: 16),
                           _buildLastUpdated(current.timestamp),
                           const SizedBox(height: 24),
@@ -196,8 +187,7 @@ class DashboardPage extends StatelessWidget {
   // ── Overall status banner ─────────────────────────────────
   Widget _buildSummaryBanner(BuildContext context, WaterQualityModel data) {
     final allSafe = data.temperatureStatus == ParameterStatus.safe &&
-        data.phStatus == ParameterStatus.safe &&
-        data.tdsStatus == ParameterStatus.safe;
+        data.phStatus == ParameterStatus.safe;
 
     final color = allSafe ? AppTheme.statusSafe : AppTheme.statusDanger;
     final message =
