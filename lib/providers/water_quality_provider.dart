@@ -224,7 +224,7 @@ class WaterQualityProvider extends ChangeNotifier {
     if (hasSameLiveValues && _history.isNotEmpty) return;
 
     try {
-      final history = await FirebaseService().fetchLastHistory(limit: 10);
+      final history = await FirebaseService().fetchLastHistory(limit: 24);
       _history
         ..clear()
         ..addAll(history);
@@ -256,35 +256,13 @@ class WaterQualityProvider extends ChangeNotifier {
     final temps   = _history.map((h) => h.temperature).toList();
     final phs     = _history.map((h) => h.ph).toList();
 
-    // Interval sensor dihitung dari timestamp history agar label waktu
-    // pada grafik & tabel prediksi sesuai cadence sensor sebenarnya.
-    final interval = _computeSensorInterval();
-
-    _tempForecast = DESAlgorithm.run(temps,
-        config: _tempDesConfig.copyWith(sensorInterval: interval));
-    _phForecast = DESAlgorithm.run(phs,
-        config: _phDesConfig.copyWith(sensorInterval: interval));
-  }
-
-  /// Hitung interval antar pembacaan dari timestamp history (median selisih).
-  /// Median dipakai agar satu gap tak normal tidak menggeser hasil.
-  /// Fallback ke 10 menit bila data tidak memadai.
-  Duration _computeSensorInterval() {
-    const fallback = Duration(minutes: 10);
-    if (_history.length < 2) return fallback;
-
-    final gaps = <int>[];
-    for (var i = 1; i < _history.length; i++) {
-      final ms = _history[i]
-          .timestamp
-          .difference(_history[i - 1].timestamp)
-          .inMilliseconds;
-      if (ms > 0) gaps.add(ms);
-    }
-    if (gaps.isEmpty) return fallback;
-
-    gaps.sort();
-    return Duration(milliseconds: gaps[gaps.length ~/ 2]);
+    // Interval sensor DIKUNCI 10 menit (lihat DESConfig.sensorInterval) agar
+    // horizon prediksi selalu tepat 30/60/90 menit. Sebelumnya interval
+    // dideteksi dari median jarak timestamp, tetapi data real-time yang tidak
+    // selalu rapi 10 menit membuat label horizon ikut berubah-ubah (mis.
+    // "10 menit", "40 menit"). Periode [3,6,9] × 10 menit = 30/60/90 menit.
+    _tempForecast = DESAlgorithm.run(temps, config: _tempDesConfig);
+    _phForecast = DESAlgorithm.run(phs, config: _phDesConfig);
   }
 
   // ── Shortcut calculateDES() standalone ───────────────────
@@ -292,6 +270,30 @@ class WaterQualityProvider extends ChangeNotifier {
       calculateDES(dataHistoris, config: _tempDesConfig);
   List<double> getPhPredictions(List<double> dataHistoris) =>
       calculateDES(dataHistoris, config: _phDesConfig);
+
+  // ==========================================================
+  // REFRESH MANUAL — dipanggil dari gesture tarik (pull-to-refresh)
+  // ==========================================================
+  /// Memuat ulang data dari sumber aktif.
+  ///
+  /// • Firebase  → re-subscribe listener agar live + history diambil ulang.
+  /// • Simulasi  → tambahkan satu pembacaan baru.
+  ///
+  /// Mengembalikan [Future] agar bisa langsung dipakai pada
+  /// `RefreshIndicator.onRefresh` di UI.
+  Future<void> refresh() async {
+    if (_dataSource == DataSource.firebase) {
+      await _firebaseSubscription?.cancel();
+      _firebaseSubscription = null;
+      _startFirebaseListener();
+      // Beri jeda singkat agar indikator refresh terlihat & data
+      // sempat masuk kembali dari Firebase sebelum indikator hilang.
+      await Future.delayed(const Duration(milliseconds: 700));
+    } else {
+      _addReading(_simulateReading());
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+  }
 
   // ==========================================================
   // DISPOSE

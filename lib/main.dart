@@ -86,12 +86,28 @@ class MainNavigationShell extends StatefulWidget {
 class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
 
+  // Parameter yang diminta saat membuka Prediksi dari Dashboard
+  // (0 = Suhu, 1 = pH). PredictionPage mendengarkan perubahan nilai ini.
+  final ValueNotifier<int> _predictionTab = ValueNotifier<int>(0);
+
   // Pages are kept alive when switching tabs via IndexedStack
-  final List<Widget> _pages = const [
-    DashboardPage(),
-    PredictionPage(),
-    InfoPage(),
+  late final List<Widget> _pages = [
+    DashboardPage(onOpenPrediction: _openPrediction),
+    PredictionPage(parameterTab: _predictionTab),
+    const InfoPage(),
   ];
+
+  // Pindah ke tab Prediksi sekaligus memilih parameter (suhu/pH).
+  void _openPrediction(int parameterIndex) {
+    _predictionTab.value = parameterIndex;
+    setState(() => _currentIndex = 1);
+  }
+
+  @override
+  void dispose() {
+    _predictionTab.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

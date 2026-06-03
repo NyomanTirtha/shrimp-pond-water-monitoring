@@ -11,6 +11,17 @@ const THRESHOLDS = {
   pH: { min: 7.5, max: 8.5, decimals: 2, label: "pH", unit: "" },
 };
 
+// Periode prediksi (kelipatan interval sensor) — HARUS selaras dengan
+// DESConfig.forecastPeriods di app (lib/utils/des_algorithm.dart).
+// Mis. interval 10 menit → horizon 30, 60, 90 menit.
+const FORECAST_PERIODS = [3, 6, 9];
+
+// Interval sensor DIKUNCI 10 menit agar horizon notifikasi selalu tepat
+// 30/60/90 menit. Sebelumnya interval dideteksi dari median jarak timestamp,
+// tetapi data real-time yang tidak selalu rapi 10 menit membuat label horizon
+// ikut berubah-ubah (mis. "10 menit", "40 menit").
+const SENSOR_INTERVAL_MINUTES = 10;
+
 exports.onSmartBuoyLiveUpdate = functions.database
   .ref("/smart_buoy/live")
   .onWrite(async (change) => {
@@ -100,9 +111,13 @@ async function maybeSendForecastAlerts(now) {
     pH: readings.map((r) => Number(r.pH)),
   };
 
+  // Interval sensor dikunci (lihat SENSOR_INTERVAL_MINUTES) agar label
+  // "X menit ke depan" selalu tepat 30/60/90 menit.
+  const intervalMinutes = SENSOR_INTERVAL_MINUTES;
+
   const breaches = [];
   for (const param of ["temp", "pH"]) {
-    const breach = forecastBreach(series[param], THRESHOLDS[param]);
+    const breach = forecastBreach(series[param], THRESHOLDS[param], intervalMinutes);
     if (breach) breaches.push(breach);
   }
 
@@ -126,19 +141,45 @@ async function maybeSendForecastAlerts(now) {
 }
 
 // Kembalikan detail breach pertama dari hasil forecast, atau null jika aman.
-function forecastBreach(series, threshold) {
-  const forecast = desForecast(series, 0.5, 0.5, 6);
+function forecastBreach(series, threshold, intervalMinutes) {
+  const step = intervalMinutes > 0 ? intervalMinutes : 10;
+  // Prediksi pada periode [3, 6, 9] (selaras app), bukan langkah berurutan.
+  const forecast = desForecast(series, 0.5, 0.5, FORECAST_PERIODS);
   for (let i = 0; i < forecast.length; i += 1) {
     const value = forecast[i];
     if (value >= threshold.min && value <= threshold.max) continue;
     const direction = value < threshold.min ? "turun ke" : "menyentuh";
-    const minutes = (i + 1) * 10;
+    // Horizon = periode × interval sensor. Mis. periode 3 × 10 mnt = 30 mnt.
+    const minutes = FORECAST_PERIODS[i] * step;
     return {
       label: threshold.label,
-      body: `${threshold.label} diprediksi akan ${direction} ${value.toFixed(threshold.decimals)}${threshold.unit} dalam ${minutes} menit ke depan!`,
+      body: `${threshold.label} diprediksi akan ${direction} ${value.toFixed(threshold.decimals)}${threshold.unit} dalam ${formatHorizon(minutes)} ke depan!`,
     };
   }
   return null;
+}
+
+// Format horizon ramah-baca: 30 → "30 menit", 60 → "1 jam",
+// 90 → "1 jam 30 menit". Konsisten dengan tampilan app.
+function formatHorizon(minutes) {
+  if (minutes < 60) return `${minutes} menit`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} jam` : `${h} jam ${m} menit`;
+}
+
+function desForecast(values, alpha, beta, periods) {
+  let level = values[0];
+  let trend = values[1] - values[0];
+  for (let i = 1; i < values.length; i += 1) {
+    const value = values[i];
+    const prevLevel = level;
+    level = alpha * value + (1 - alpha) * (level + trend);
+    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+  }
+  // periods: array langkah horizon (jumlah interval ke depan), mis. [3,6,9].
+  // Rumus DES: F(t+m) = level + m × trend.
+  return periods.map((m) => level + m * trend);
 }
 
 async function sendWithCooldown(key, now, title, body, type, labels) {
@@ -208,16 +249,4 @@ async function sendWithCooldown(key, now, title, body, type, labels) {
   }
 
   await stateRef.set({ lastSentAt: now, signature });
-}
-
-function desForecast(values, alpha, beta, periods) {
-  let level = values[0];
-  let trend = values[1] - values[0];
-  for (let i = 1; i < values.length; i += 1) {
-    const value = values[i];
-    const prevLevel = level;
-    level = alpha * value + (1 - alpha) * (level + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
-  }
-  return Array.from({ length: periods }, (_, i) => level + (i + 1) * trend);
 }

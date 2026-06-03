@@ -39,7 +39,11 @@ class _PredictionSnapshot {
 }
 
 class PredictionPage extends StatefulWidget {
-  const PredictionPage({super.key});
+  /// Parameter yang diminta dari luar (Dashboard): 0 = Suhu, 1 = pH.
+  /// Saat nilainya berubah, tab otomatis berpindah ke parameter tersebut.
+  final ValueNotifier<int>? parameterTab;
+
+  const PredictionPage({super.key, this.parameterTab});
 
   @override
   State<PredictionPage> createState() => _PredictionPageState();
@@ -54,16 +58,28 @@ class _PredictionPageState extends State<PredictionPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
+    final initial = widget.parameterTab?.value ?? 0;
+    _selectedParameter = initial;
+    _tabController = TabController(length: 2, vsync: this, initialIndex: initial)
       ..addListener(() {
         if (!_tabController.indexIsChanging) {
           setState(() => _selectedParameter = _tabController.index);
         }
       });
+    widget.parameterTab?.addListener(_onParameterTabRequested);
+  }
+
+  // Dipanggil saat Dashboard meminta membuka parameter tertentu.
+  void _onParameterTabRequested() {
+    final idx = widget.parameterTab?.value ?? 0;
+    if (idx != _tabController.index) {
+      _tabController.animateTo(idx);
+    }
   }
 
   @override
   void dispose() {
+    widget.parameterTab?.removeListener(_onParameterTabRequested);
     _tabController.dispose();
     super.dispose();
   }
@@ -264,17 +280,6 @@ class _ParameterChartView extends StatelessWidget {
     return '${value.toStringAsFixed(decimalPlaces)}$suffix';
   }
 
-  List<double> _chartValues() {
-    final values = <double>[
-      ...history.where((value) => value.isFinite),
-    ];
-    final prediction = forecast?.forecast.where((value) => value.isFinite);
-    if (prediction != null) {
-      values.addAll(prediction);
-    }
-    return values.isEmpty ? <double>[0] : values;
-  }
-
   double _minValue(List<double> values) {
     var result = values.first;
     for (final value in values.skip(1)) {
@@ -298,27 +303,6 @@ class _ParameterChartView extends StatelessWidget {
     }
     final base = maxValue.abs() * 0.1;
     return base > 0 ? base : 1;
-  }
-
-  List<FlSpot> _buildForecastSpots(DESResult? result) {
-    if (result == null || result.forecast.isEmpty || history.isEmpty) {
-      return const <FlSpot>[];
-    }
-
-    final lastHistoryIndex = history.length - 1;
-    final spots = <FlSpot>[];
-
-    for (var i = 0; i < result.forecast.length; i++) {
-      if (i >= result.forecastPeriods.length) break;
-      spots.add(
-        FlSpot(
-          (lastHistoryIndex + result.forecastPeriods[i]).toDouble(),
-          result.forecast[i],
-        ),
-      );
-    }
-
-    return spots;
   }
 
   /// Widget teks yang dirotasi ~25° untuk menghindari tabrakan antar label.
@@ -345,32 +329,87 @@ class _ParameterChartView extends StatelessWidget {
       return const Center(child: Text('Belum ada data'));
     }
 
-    // Build spots for historical line
-    final histSpots = history.asMap().entries.map((e) {
+    final interval = _readingInterval();
+
+    // ── Jendela tampilan: tampilkan hanya histori TERBARU agar chart tidak
+    // terlalu padat. Dengan ratusan titik, sumbu X jadi sangat terkompresi
+    // sehingga jam (terutama bagian prediksi) saling menimpa / hilang.
+    // Membatasi ke ~24 titik (≈4 jam pada interval 10 menit) membuat semua
+    // jam—termasuk +30/+60/+90—muat & terbaca. Riwayat penuh tetap ada di
+    // halaman Riwayat.
+    const int maxChartPoints = 24;
+    final int startIdx =
+        history.length > maxChartPoints ? history.length - maxChartPoints : 0;
+    final List<double> viewHistory = history.sublist(startIdx);
+    final List<DateTime> viewTimestamps = timestamps.length == history.length
+        ? timestamps.sublist(startIdx)
+        : timestamps;
+    final int lastViewIdx = viewHistory.length - 1;
+
+    // Build spots for historical line (terindeks ulang dari 0).
+    final histSpots = viewHistory.asMap().entries.map((e) {
       return FlSpot(e.key.toDouble(), e.value);
     }).toList();
 
-    // Build spots for DES forecast (appended after historical)
-    final forecastSpots = _buildForecastSpots(forecast);
+    // Build spots for DES forecast (ditambahkan setelah histori jendela).
+    final forecastSpots = <FlSpot>[];
+    if (forecast != null) {
+      for (var i = 0;
+          i < forecast!.forecast.length &&
+              i < forecast!.forecastPeriods.length;
+          i++) {
+        final v = forecast!.forecast[i];
+        if (!v.isFinite) continue;
+        forecastSpots.add(
+          FlSpot((lastViewIdx + forecast!.forecastPeriods[i]).toDouble(), v),
+        );
+      }
+    }
     final forecastLineSpots =
         forecastSpots.isNotEmpty ? [histSpots.last, ...forecastSpots] : <FlSpot>[];
-    final interval = _readingInterval();
-    final lastTimestamp = timestamps.isNotEmpty ? timestamps.last : DateTime.now();
+
+    final lastTimestamp =
+        viewTimestamps.isNotEmpty ? viewTimestamps.last : DateTime.now();
     final forecastLabelByX = <int, DateTime>{};
-    final chartValues = _chartValues();
-    final dataMin = _minValue(chartValues);
-    final dataMax = _maxValue(chartValues);
+    if (forecast != null) {
+      for (var i = 0; i < forecast!.forecastPeriods.length; i++) {
+        final period = forecast!.forecastPeriods[i];
+        forecastLabelByX[lastViewIdx + period] =
+            lastTimestamp.add(interval * period);
+      }
+    }
+
+    // Skala Y dihitung dari nilai pada jendela + prediksi.
+    final chartValues = <double>[
+      ...viewHistory.where((v) => v.isFinite),
+      if (forecast != null) ...forecast!.forecast.where((v) => v.isFinite),
+    ];
+    final safeValues = chartValues.isEmpty ? <double>[0] : chartValues;
+    final dataMin = _minValue(safeValues);
+    final dataMax = _maxValue(safeValues);
     final padding = _axisPadding(dataMin, dataMax);
     final chartMinY = dataMin - padding;
     final chartMaxY = dataMax + padding;
 
-    if (forecast != null) {
-      for (var i = 0; i < forecast!.forecastPeriods.length; i++) {
-        final period = forecast!.forecastPeriods[i];
-        forecastLabelByX[history.length - 1 + period] =
-            lastTimestamp.add(interval * period);
-      }
+    // ── Sumbu Y: satu interval tetap (= jarak garis grid) agar angka tidak
+    // menumpuk. Range dibagi 4 → ~5 label. ──────────────────────────────
+    final double yInterval =
+        ((chartMaxY - chartMinY) / 4).clamp(0.0001, double.infinity);
+
+    // ── Sumbu X: label histori dibuat ~5 merata, lalu SEMUA jam prediksi
+    // (+30/+60/+90) ditambahkan agar bagian masa depan selalu berlabel.
+    // Label histori yang terlalu rapat dengan prediksi pertama dibuang.
+    final int histGap = (lastViewIdx / 4).ceil().clamp(1, 1 << 30);
+    final Set<int> visibleLabelXs = {0};
+    for (int x = histGap; x <= lastViewIdx; x += histGap) {
+      visibleLabelXs.add(x);
     }
+    final List<int> forecastXs = forecastLabelByX.keys.toList()..sort();
+    final int firstForecastX =
+        forecastXs.isNotEmpty ? forecastXs.first : (lastViewIdx + 1);
+    visibleLabelXs.removeWhere((x) =>
+        x != 0 && x <= lastViewIdx && (firstForecastX - x) < histGap * 0.7);
+    visibleLabelXs.addAll(forecastXs);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -420,12 +459,13 @@ class _ParameterChartView extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade100),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.primaryBlue.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
@@ -436,14 +476,20 @@ class _ParameterChartView extends StatelessWidget {
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
+                  horizontalInterval: yInterval,
                   getDrawingHorizontalLine: (v) => FlLine(
-                    color: Colors.grey.shade200,
+                    color: Colors.grey.shade100,
                     strokeWidth: 1,
                   ),
                 ),
                 borderData: FlBorderData(show: false),
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
+                    tooltipRoundedRadius: 10,
+                    tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    getTooltipColor: (touchedSpot) =>
+                        AppTheme.textDark.withOpacity(0.92),
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
                         return LineTooltipItem(
@@ -463,11 +509,19 @@ class _ParameterChartView extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 40,
-                      getTitlesWidget: (v, meta) => Text(
-                        v.toStringAsFixed(1),
-                        style: const TextStyle(
-                            fontSize: 10, color: AppTheme.textGray),
-                      ),
+                      interval: yInterval,
+                      getTitlesWidget: (v, meta) {
+                        // Sembunyikan label tepat di batas atas/bawah agar
+                        // tidak terpotong / menempel ke tepi chart.
+                        if (v <= meta.min || v >= meta.max) {
+                          return const SizedBox.shrink();
+                        }
+                        return Text(
+                          v.toStringAsFixed(1),
+                          style: const TextStyle(
+                              fontSize: 10, color: AppTheme.textGray),
+                        );
+                      },
                     ),
                   ),
                   bottomTitles: AxisTitles(
@@ -483,30 +537,25 @@ class _ParameterChartView extends StatelessWidget {
                           return const SizedBox.shrink();
                         }
 
-                        // ── Hitung step (interval) antar label ──────────
-                        // Tampilkan maks ~5 label historis di layar
-                        final int labelStep =
-                            (history.length / 5).ceil().clamp(1, 999);
+                        // Hanya tampilkan label pada indeks terpilih yang
+                        // jaraknya sudah dijamin agar tidak tabrakan.
+                        if (!visibleLabelXs.contains(idx)) {
+                          return const SizedBox.shrink();
+                        }
 
-                        if (idx < history.length) {
+                        if (idx <= lastViewIdx) {
                           // ── Label historis ────────────────────────────
-                          // Tampilkan hanya pada kelipatan labelStep;
-                          // selalu tampilkan titik pertama dan terakhir.
-                          final bool isFirst = idx == 0;
-                          final bool isLast  = idx == history.length - 1;
-                          if (!isFirst && !isLast && idx % labelStep != 0) {
-                            return const SizedBox.shrink();
-                          }
-                          final ts = (idx < timestamps.length)
-                              ? timestamps[idx]
+                          final ts = (idx < viewTimestamps.length)
+                              ? viewTimestamps[idx]
                               : DateTime.now().subtract(
-                                  interval * (history.length - 1 - idx));
+                                  interval * (lastViewIdx - idx));
                           return _rotatedLabel(
                             _formatTime(ts, interval),
                             AppTheme.textGray,
                             FontWeight.w400,
                           );
                         } else {
+                          // ── Label prediksi ────────────────────────────
                           final forecastTime = forecastLabelByX[idx];
                           if (forecastTime == null) {
                             return const SizedBox.shrink();
@@ -526,34 +575,64 @@ class _ParameterChartView extends StatelessWidget {
                       sideTitles: SideTitles(showTitles: false)),
                 ),
                 lineBarsData: [
-                  // Historical actual line
+                  // ── Garis data aktual (historis) ──────────────
                   LineChartBarData(
                     spots: histSpots,
                     isCurved: true,
-                    color: color,
-                    barWidth: 2.5,
-                    dotData: const FlDotData(show: false),
+                    curveSmoothness: 0.3,
+                    preventCurveOverShooting: true,
+                    // Gradien garis: lebih terang → warna penuh
+                    gradient: LinearGradient(
+                      colors: [color.withOpacity(0.55), color],
+                    ),
+                    barWidth: 3,
+                    // Titik hanya pada nilai terkini (titik terakhir histori)
+                    dotData: FlDotData(
+                      show: true,
+                      checkToShowDot: (spot, bar) =>
+                          spot.x == histSpots.last.x,
+                      getDotPainter: (spot, pct, bar, idx) =>
+                          FlDotCirclePainter(
+                        radius: 4.5,
+                        color: color,
+                        strokeWidth: 2.5,
+                        strokeColor: Colors.white,
+                      ),
+                    ),
+                    // Area gradien lembut di bawah garis
                     belowBarData: BarAreaData(
                       show: true,
-                      color: color.withOpacity(0.08),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          color.withOpacity(0.22),
+                          color.withOpacity(0.02),
+                        ],
+                      ),
                     ),
                   ),
-                  // Linker (dashed transition)
+                  // ── Garis prediksi (putus-putus) ──────────────
                   if (forecastLineSpots.isNotEmpty)
                     LineChartBarData(
                       spots: forecastLineSpots,
-                      isCurved: false,
-                      color: color.withOpacity(0.65),
-                      barWidth: 2,
-                      dashArray: [6, 4],
+                      isCurved: true,
+                      curveSmoothness: 0.3,
+                      preventCurveOverShooting: true,
+                      color: color.withOpacity(0.7),
+                      barWidth: 2.5,
+                      dashArray: [5, 5],
                       dotData: FlDotData(
                         show: true,
+                        // Sembunyikan titik sambungan pertama (titik 'sekarang')
+                        checkToShowDot: (spot, bar) =>
+                            spot.x != forecastLineSpots.first.x,
                         getDotPainter: (spot, pct, bar, idx) =>
                             FlDotCirclePainter(
-                          radius: 4,
-                          color: color,
-                          strokeWidth: 1.5,
-                          strokeColor: Colors.white,
+                          radius: 3.5,
+                          color: Colors.white,
+                          strokeWidth: 2,
+                          strokeColor: color,
                         ),
                       ),
                     ),
