@@ -19,6 +19,7 @@ class _DashboardSnapshot {
   final String statusMessage;
   final DESResult? tempForecast;
   final DESResult? phForecast;
+  final DESResult? turbForecast;
   final int dataVersion;
 
   const _DashboardSnapshot({
@@ -27,6 +28,7 @@ class _DashboardSnapshot {
     required this.statusMessage,
     required this.tempForecast,
     required this.phForecast,
+    required this.turbForecast,
     required this.dataVersion,
   });
 }
@@ -47,6 +49,7 @@ class DashboardPage extends StatelessWidget {
         statusMessage: provider.statusMessage,
         tempForecast: provider.tempForecast,
         phForecast: provider.phForecast,
+        turbForecast: provider.turbForecast,
         dataVersion: provider.dataVersion,
       ),
       shouldRebuild: (previous, next) =>
@@ -130,12 +133,41 @@ class DashboardPage extends StatelessWidget {
                                 ],
                               ),
                             ),
+                            // ── Gauge kekeruhan (baris kedua) ────
+                            /*
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: GaugeCard(
+                                      title: 'Kekeruhan',
+                                      value: current.turbidity,
+                                      min: 0,
+                                      max: 400,
+                                      unit: 'NTU',
+                                      decimals: 0,
+                                      color:
+                                          statusColor(current.turbidityStatus),
+                                      icon: Icons.opacity_rounded,
+                                      status: current.turbidityStatus,
+                                      safeRangeText:
+                                          '≤ ${WaterThreshold.turbMax.toStringAsFixed(0)} NTU',
+                                    ),
+                                  ),
+                                  const Expanded(child: SizedBox()),
+                                ],
+                              ),
+                            ),
+                            */
                             const SizedBox(height: 16),
                             _buildPredictionSection(
                               context,
                               current,
                               snapshot.tempForecast,
                               snapshot.phForecast,
+                              snapshot.turbForecast,
                             ),
                             const SizedBox(height: 16),
                             _buildLastUpdated(current.timestamp),
@@ -322,6 +354,7 @@ class DashboardPage extends StatelessWidget {
     WaterQualityModel current,
     DESResult? tempForecast,
     DESResult? phForecast,
+    DESResult? turbForecast,
   ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -368,6 +401,20 @@ class DashboardPage extends StatelessWidget {
             safeMin: WaterThreshold.phMin,
             safeMax: WaterThreshold.phMax,
           ),
+          /*
+          const SizedBox(height: 10),
+          _buildPredictionCard(
+            paramIndex: 2,
+            title: 'Kekeruhan',
+            icon: Icons.opacity_rounded,
+            currentValue: current.turbidity,
+            forecast: turbForecast,
+            unit: 'NTU',
+            decimals: 0,
+            safeMin: WaterThreshold.turbMin,
+            safeMax: WaterThreshold.turbMax,
+          ),
+          */
         ],
       ),
     );
