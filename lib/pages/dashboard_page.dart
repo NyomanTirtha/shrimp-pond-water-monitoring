@@ -305,12 +305,16 @@ class DashboardPage extends StatelessWidget {
 
   // ── Overall status banner ─────────────────────────────────
   Widget _buildSummaryBanner(BuildContext context, WaterQualityModel data) {
-    final allSafe = data.temperatureStatus == ParameterStatus.safe &&
-        data.phStatus == ParameterStatus.safe;
+    // Mengecek apakah LoRa aktif berdasarkan timestamp terakhir
+    // Asumsi: Jika data terakhir dikirim kurang dari 15 menit yang lalu, LoRa dianggap terhubung.
+    final difference = DateTime.now().difference(data.timestamp);
+    final isLoraConnected = difference.inMinutes < 15;
 
-    final color = allSafe ? AppTheme.statusSafe : AppTheme.statusDanger;
-    final message =
-        allSafe ? 'Semua parameter dalam kondisi aman ✓' : 'Ada parameter yang perlu perhatian!';
+    final color = isLoraConnected ? AppTheme.statusSafe : AppTheme.statusDanger;
+    final message = isLoraConnected
+        ? 'Status LoRa: Terhubung ✓'
+        : 'Status LoRa: Tidak Terhubung / Terputus!';
+    final iconData = isLoraConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -325,7 +329,7 @@ class DashboardPage extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              allSafe ? Icons.verified_rounded : Icons.warning_amber_rounded,
+              iconData,
               color: color,
             ),
             const SizedBox(width: 10),
