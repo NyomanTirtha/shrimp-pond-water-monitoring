@@ -60,3 +60,6 @@ token.json
 
 # Cloud Functions
 functions/node_modules/
+
+# Android build artifacts
+/android/build/

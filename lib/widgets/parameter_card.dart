@@ -35,7 +35,7 @@ class ParameterCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.35), width: 1.5),
+          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -46,7 +46,7 @@ class ParameterCard extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withOpacity(0.08),
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: AppTheme.primaryBlue, size: 28),
@@ -110,9 +110,9 @@ class ParameterCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: color.withOpacity(0.6)),
+                  border: Border.all(color: color.withValues(alpha: 0.6)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

@@ -70,7 +70,7 @@ class GaugeCard extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryBlue.withOpacity(0.08),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: AppTheme.primaryBlue, size: 18),
@@ -86,7 +86,7 @@ class GaugeCard extends StatelessWidget {
                 painter: _GaugePainter(
                   fraction: fraction,
                   color: color,
-                  trackColor: color.withOpacity(0.15),
+                  trackColor: color.withValues(alpha: 0.15),
                 ),
                 child: Stack(
                   children: [
@@ -153,9 +153,9 @@ class GaugeCard extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: color.withOpacity(0.6)),
+                border: Border.all(color: color.withValues(alpha: 0.6)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

@@ -94,7 +94,7 @@ class InfoPage extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryBlue.withOpacity(0.1),
+                      color: AppTheme.primaryBlue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
@@ -134,10 +134,10 @@ class InfoPage extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withOpacity(0.04),
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: AppTheme.primaryBlue.withOpacity(0.2),
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.2),
                   ),
                 ),
                 child: Column(
@@ -210,10 +210,10 @@ class InfoPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppTheme.statusSafe.withOpacity(0.08),
+                  color: AppTheme.statusSafe.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: AppTheme.statusSafe.withOpacity(0.35),
+                    color: AppTheme.statusSafe.withValues(alpha: 0.35),
                   ),
                 ),
                 child: const Row(
@@ -225,7 +225,7 @@ class InfoPage extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Algoritma ini membantu petambak mengantisipasi '
-                        'perubahan Suhu, pH, dan Total Padatan Terlarut '
+                        'perubahan Suhu, pH, dan Kekeruhan '
                         'secara dini, sehingga tindakan pencegahan dapat '
                         'dilakukan sebelum kondisi air menjadi berbahaya '
                         'bagi udang.',
@@ -302,6 +302,15 @@ class InfoPage extends StatelessWidget {
         color: const Color(0xFF6BCB77),
         note: 'Mencegah stress dan kematian udang',
       ),
+      _ThresholdRow(
+        parameter: 'Kekeruhan',
+        unit: 'NTU',
+        min: WaterThreshold.turbMin,
+        max: WaterThreshold.turbMax,
+        icon: Icons.opacity_rounded,
+        color: const Color(0xFFB08968),
+        note: 'Air terlalu keruh menghambat oksigen & pakan',
+      ),
     ];
 
     return Padding(
@@ -323,7 +332,7 @@ class InfoPage extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: row.color.withOpacity(0.1),
+                color: row.color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(row.icon, color: row.color, size: 24),
@@ -424,7 +433,7 @@ class InfoPage extends StatelessWidget {
                     fontSize: 13, color: AppTheme.textGray, height: 1.6),
               ),
               const SizedBox(height: 12),
-              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, Total Padatan Terlarut'),
+              _infoRow(Icons.sensors_rounded, 'Sensor', 'Suhu, pH, Kekeruhan'),
               _infoRow(Icons.cloud_rounded, 'Backend', 'Firebase Realtime DB'),
               _infoRow(Icons.analytics_rounded, 'Algoritma',
                   'Double Exponential Smoothing'),

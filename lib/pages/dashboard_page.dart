@@ -322,9 +322,9 @@ class DashboardPage extends StatelessWidget {
         duration: const Duration(milliseconds: 400),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.5)),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
         ),
         child: Row(
           children: [
@@ -594,7 +594,7 @@ class DashboardPage extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: AppTheme.primaryBlue.withOpacity(0.06),
+          color: AppTheme.primaryBlue.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -616,7 +616,7 @@ class DashboardPage extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.3,
-                    color: AppTheme.textGray.withOpacity(0.9),
+                    color: AppTheme.textGray.withValues(alpha: 0.9),
                   ),
                 ),
               ],

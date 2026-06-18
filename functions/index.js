@@ -9,6 +9,7 @@ const COOL_DOWN_MS = 5 * 60 * 1000;
 const THRESHOLDS = {
   temp: { min: 26.0, max: 32.0, decimals: 1, label: "Suhu", unit: "°C" },
   pH: { min: 7.5, max: 8.5, decimals: 2, label: "pH", unit: "" },
+  turb: { min: 0.0, max: 100.0, decimals: 0, label: "Kekeruhan", unit: " NTU" },
 };
 
 // Periode prediksi (kelipatan interval sensor) — HARUS selaras dengan
@@ -34,6 +35,7 @@ exports.onSmartBuoyLiveUpdate = functions.database
     console.log("[EWS] Live update received", {
       temp: data.temp,
       pH: data.pH,
+      turb: data.turb,
     });
 
     const now = Date.now();
@@ -117,6 +119,7 @@ async function maybeSendForecastAlerts(now) {
 
   const breaches = [];
   for (const param of ["temp", "pH"]) {
+    if (series[param].some((v) => !Number.isFinite(v))) continue;
     const breach = forecastBreach(series[param], THRESHOLDS[param], intervalMinutes);
     if (breach) breaches.push(breach);
   }

@@ -32,9 +32,11 @@ class WaterQualityProvider extends ChangeNotifier {
   // ── Konfigurasi DES ────────────────────────────────────────
   DESConfig _tempDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
   DESConfig _phDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
+  DESConfig _turbDesConfig = const DESConfig(alpha: 0.5, beta: 0.5);
 
   DESConfig get tempDesConfig => _tempDesConfig;
   DESConfig get phDesConfig => _phDesConfig;
+  DESConfig get turbDesConfig => _turbDesConfig;
 
   int _dataVersion = 0;
   int get dataVersion => _dataVersion;
@@ -59,6 +61,16 @@ class WaterQualityProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateTurbDESConfig({required double alpha, required double beta}) {
+    _turbDesConfig = DESConfig(
+      alpha: alpha.clamp(0.01, 0.99),
+      beta:  beta.clamp(0.01, 0.99),
+    );
+    _computeForecasts();
+    _dataVersion++;
+    notifyListeners();
+  }
+
   // ── Data saat ini ──────────────────────────────────────────
   WaterQualityModel? _current;
   WaterQualityModel? get current => _current;
@@ -70,12 +82,15 @@ class WaterQualityProvider extends ChangeNotifier {
   // ── Hasil DES ─────────────────────────────────────────────
   DESResult? _tempForecast;
   DESResult? _phForecast;
+  DESResult? _turbForecast;
 
   DESResult? get tempForecast => _tempForecast;
   DESResult? get phForecast   => _phForecast;
+  DESResult? get turbForecast => _turbForecast;
 
   List<double> get tempPredictions => _tempForecast?.forecast ?? [];
   List<double> get phPredictions   => _phForecast?.forecast   ?? [];
+  List<double> get turbPredictions => _turbForecast?.forecast ?? [];
 
   // ── Status koneksi & loading ──────────────────────────────
   ConnectionStatus _connectionStatus = ConnectionStatus.connecting;
@@ -191,6 +206,7 @@ class WaterQualityProvider extends ChangeNotifier {
         ? WaterQualityModel(
             temperature: 29.0,
             ph: 7.8,
+            turbidity: 40.0,
             timestamp: DateTime.now(),
           )
         : _history.last;
@@ -201,6 +217,8 @@ class WaterQualityProvider extends ChangeNotifier {
       temperature:
           clamp(base.temperature + (_random.nextDouble() * 1.0 - 0.5), 24, 35),
       ph:  clamp(base.ph + (_random.nextDouble() * 0.3 - 0.15), 6.5, 9.5),
+      turbidity:
+          clamp(base.turbidity + (_random.nextDouble() * 8.0 - 4.0), 0, 400),
       timestamp: timestamp ?? DateTime.now(),
     );
   }
@@ -255,14 +273,16 @@ class WaterQualityProvider extends ChangeNotifier {
 
     final temps   = _history.map((h) => h.temperature).toList();
     final phs     = _history.map((h) => h.ph).toList();
+    final turbs   = _history.map((h) => h.turbidity).toList();
 
     // Interval sensor DIKUNCI 10 menit (lihat DESConfig.sensorInterval) agar
-    // horizon prediksi selalu tepat 30/60/90 menit. Sebelumnya interval
-    // dideteksi dari median jarak timestamp, tetapi data real-time yang tidak
-    // selalu rapi 10 menit membuat label horizon ikut berubah-ubah (mis.
-    // "10 menit", "40 menit"). Periode [3,6,9] × 10 menit = 30/60/90 menit.
+    // horizon prediksi selalu tepat 30 menit. Sebelumnya interval dideteksi
+    // dari median jarak timestamp, tetapi data real-time yang tidak selalu
+    // rapi 10 menit membuat label horizon ikut berubah-ubah (mis. "10 menit",
+    // "40 menit"). Periode [3] × 10 menit = 30 menit.
     _tempForecast = DESAlgorithm.run(temps, config: _tempDesConfig);
     _phForecast = DESAlgorithm.run(phs, config: _phDesConfig);
+    _turbForecast = DESAlgorithm.run(turbs, config: _turbDesConfig);
   }
 
   // ── Shortcut calculateDES() standalone ───────────────────
@@ -270,6 +290,8 @@ class WaterQualityProvider extends ChangeNotifier {
       calculateDES(dataHistoris, config: _tempDesConfig);
   List<double> getPhPredictions(List<double> dataHistoris) =>
       calculateDES(dataHistoris, config: _phDesConfig);
+  List<double> getTurbPredictions(List<double> dataHistoris) =>
+      calculateDES(dataHistoris, config: _turbDesConfig);
 
   // ==========================================================
   // REFRESH MANUAL — dipanggil dari gesture tarik (pull-to-refresh)

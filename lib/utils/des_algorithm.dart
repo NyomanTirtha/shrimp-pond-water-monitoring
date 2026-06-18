@@ -23,7 +23,7 @@ class DESConfig {
   const DESConfig({
     this.alpha  = 0.5,  // default sesuai spesifikasi
     this.beta   = 0.5,
-    this.forecastPeriods = const [3, 6, 9],
+    this.forecastPeriods = const [3],  // 3 × 10 menit = 30 menit ke depan
     this.sensorInterval = const Duration(minutes: 10),
   }) : assert(alpha > 0 && alpha < 1, 'alpha harus antara 0 dan 1'),
        assert(beta  > 0 && beta  < 1, 'beta harus antara 0 dan 1');

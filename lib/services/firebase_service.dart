@@ -6,13 +6,16 @@
 //
 //   smart_buoy/
 //   ├── live/
-//   │   ├── temp : 29.5
-//   │   ├── pH   : 7.8
-//   │   └── ts   : 1714920000000
+//   │   ├── temp    : 29.5
+//   │   ├── pH      : 7.8
+//   │   ├── turb    : 42.0    (NTU)
+//   │   ├── kondisi : "Keruh" (label kualitatif, opsional)
+//   │   └── ts      : 1714920000000
 //   └── history/
 //       └── -PushIdRandom/
 //           ├── temp
 //           ├── pH
+//           ├── turb
 //           └── ts
 //
 // Ubah kLivePath / kHistoryPath jika struktur Firebase Anda berbeda.
@@ -141,6 +144,8 @@ class FirebaseService {
     return WaterQualityModel(
       temperature: _toDouble(map['temp']),
       ph: _toDouble(map['pH']),
+      // turb opsional agar kompatibel dengan data history lama (tanpa turbidity).
+      turbidity: _toDouble(map['turb']),
       timestamp: timestamp > 0
           ? DateTime.fromMillisecondsSinceEpoch(timestamp)
           : DateTime.now(),
@@ -151,6 +156,7 @@ class FirebaseService {
     return WaterQualityModel(
       temperature: 29.0,
       ph: 7.8,
+      turbidity: 20.0,
       timestamp: DateTime.now(),
     );
   }
@@ -161,10 +167,12 @@ class FirebaseService {
   Future<void> writeDummyData({
     required double suhu,
     required double ph,
+    required double turbidity,
   }) async {
     await _liveRef.set({
       'temp': suhu,
       'pH': ph,
+      'turb': turbidity,
       'ts': DateTime.now().millisecondsSinceEpoch,
     });
   }

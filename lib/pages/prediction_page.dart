@@ -17,11 +17,14 @@ class _PredictionSnapshot {
   final bool isLoading;
   final List<double> temperatures;
   final List<double> phs;
+  final List<double> turbidities;
   final List<DateTime> timestamps;
   final DESResult? tempForecast;
   final DESResult? phForecast;
+  final DESResult? turbForecast;
   final double currentTemperature;
   final double currentPh;
+  final double currentTurbidity;
   final String statusMessage;
 
   const _PredictionSnapshot({
@@ -29,11 +32,14 @@ class _PredictionSnapshot {
     required this.isLoading,
     required this.temperatures,
     required this.phs,
+    required this.turbidities,
     required this.timestamps,
     required this.tempForecast,
     required this.phForecast,
+    required this.turbForecast,
     required this.currentTemperature,
     required this.currentPh,
+    required this.currentTurbidity,
     required this.statusMessage,
   });
 }
@@ -92,11 +98,14 @@ class _PredictionPageState extends State<PredictionPage>
         isLoading: provider.isLoading,
         temperatures: provider.history.map((h) => h.temperature).toList(),
         phs: provider.history.map((h) => h.ph).toList(),
+        turbidities: provider.history.map((h) => h.turbidity).toList(),
         timestamps: provider.history.map((h) => h.timestamp).toList(),
         tempForecast: provider.tempForecast,
         phForecast: provider.phForecast,
+        turbForecast: provider.turbForecast,
         currentTemperature: provider.current?.temperature ?? 0,
         currentPh: provider.current?.ph ?? 0,
+        currentTurbidity: provider.current?.turbidity ?? 0,
         statusMessage: provider.statusMessage,
       ),
       shouldRebuild: (previous, next) =>
@@ -335,8 +344,8 @@ class _ParameterChartView extends StatelessWidget {
     // terlalu padat. Dengan ratusan titik, sumbu X jadi sangat terkompresi
     // sehingga jam (terutama bagian prediksi) saling menimpa / hilang.
     // Membatasi ke ~24 titik (≈4 jam pada interval 10 menit) membuat semua
-    // jam—termasuk +30/+60/+90—muat & terbaca. Riwayat penuh tetap ada di
-    // halaman Riwayat.
+    // jam—termasuk horizon prediksi +30 menit—muat & terbaca. Riwayat penuh
+    // tetap ada di halaman Riwayat.
     const int maxChartPoints = 24;
     final int startIdx =
         history.length > maxChartPoints ? history.length - maxChartPoints : 0;
@@ -396,8 +405,8 @@ class _ParameterChartView extends StatelessWidget {
     final double yInterval =
         ((chartMaxY - chartMinY) / 4).clamp(0.0001, double.infinity);
 
-    // ── Sumbu X: label histori dibuat ~5 merata, lalu SEMUA jam prediksi
-    // (+30/+60/+90) ditambahkan agar bagian masa depan selalu berlabel.
+    // ── Sumbu X: label histori dibuat ~5 merata, lalu jam prediksi
+    // (+30 menit) ditambahkan agar bagian masa depan selalu berlabel.
     // Label histori yang terlalu rapat dengan prediksi pertama dibuang.
     final int histGap = (lastViewIdx / 4).ceil().clamp(1, 1 << 30);
     final Set<int> visibleLabelXs = {0};
@@ -463,7 +472,7 @@ class _ParameterChartView extends StatelessWidget {
               border: Border.all(color: Colors.grey.shade100),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
                 ),
@@ -489,7 +498,7 @@ class _ParameterChartView extends StatelessWidget {
                     tooltipPadding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
                     getTooltipColor: (touchedSpot) =>
-                        AppTheme.textDark.withOpacity(0.92),
+                        AppTheme.textDark.withValues(alpha: 0.92),
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
                         return LineTooltipItem(
@@ -583,7 +592,7 @@ class _ParameterChartView extends StatelessWidget {
                     preventCurveOverShooting: true,
                     // Gradien garis: lebih terang → warna penuh
                     gradient: LinearGradient(
-                      colors: [color.withOpacity(0.55), color],
+                      colors: [color.withValues(alpha: 0.55), color],
                     ),
                     barWidth: 3,
                     // Titik hanya pada nilai terkini (titik terakhir histori)
@@ -606,8 +615,8 @@ class _ParameterChartView extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          color.withOpacity(0.22),
-                          color.withOpacity(0.02),
+                          color.withValues(alpha: 0.22),
+                          color.withValues(alpha: 0.02),
                         ],
                       ),
                     ),
@@ -619,7 +628,7 @@ class _ParameterChartView extends StatelessWidget {
                       isCurved: true,
                       curveSmoothness: 0.3,
                       preventCurveOverShooting: true,
-                      color: color.withOpacity(0.7),
+                      color: color.withValues(alpha: 0.7),
                       barWidth: 2.5,
                       dashArray: [5, 5],
                       dotData: FlDotData(
@@ -687,7 +696,7 @@ class _ParameterChartView extends StatelessWidget {
         const Text('Data Aktual',
             style: TextStyle(fontSize: 11, color: AppTheme.textGray)),
         const SizedBox(width: 16),
-        dot(c: color.withOpacity(0.65), dashed: true),
+        dot(c: color.withValues(alpha: 0.65), dashed: true),
         const SizedBox(width: 6),
         const Text('Prediksi DES',
             style: TextStyle(fontSize: 11, color: AppTheme.textGray)),
@@ -715,7 +724,7 @@ class _ParameterChartView extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           child: Table(
             border: TableBorder.all(
-              color: AppTheme.primaryBlue.withOpacity(0.12),
+              color: AppTheme.primaryBlue.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             columnWidths: const {
@@ -727,7 +736,7 @@ class _ParameterChartView extends StatelessWidget {
               // ── Header row ───────────────────────────────
               TableRow(
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withOpacity(0.08),
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.08),
                 ),
                 children: [
                   _headerCell('Waktu'),
@@ -749,7 +758,7 @@ class _ParameterChartView extends StatelessWidget {
                     ? const Color(0xFFFFEBEB)   // merah muda lembut
                     : (e.key.isEven
                         ? Colors.white
-                        : AppTheme.surfaceBlue.withOpacity(0.4));
+                        : AppTheme.surfaceBlue.withValues(alpha: 0.4));
 
                 final Color valueColor =
                     isDanger ? AppTheme.statusDanger : color;
@@ -779,8 +788,8 @@ class _ParameterChartView extends StatelessWidget {
                               horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: isDanger
-                                ? AppTheme.statusDanger.withOpacity(0.12)
-                                : AppTheme.statusSafe.withOpacity(0.12),
+                                ? AppTheme.statusDanger.withValues(alpha: 0.12)
+                                : AppTheme.statusSafe.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -811,7 +820,7 @@ class _ParameterChartView extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFEBEB),
                   border: Border.all(
-                      color: AppTheme.statusDanger.withOpacity(0.4)),
+                      color: AppTheme.statusDanger.withValues(alpha: 0.4)),
                   borderRadius: BorderRadius.circular(2),
                 )),
             const SizedBox(width: 6),

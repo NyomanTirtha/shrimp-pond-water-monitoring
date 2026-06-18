@@ -155,8 +155,8 @@ class PredictionAnalysisCard extends StatelessWidget {
 
     // ── Tentukan palet warna berdasarkan tren ────────────
     final Color accentColor = _accentColor(result);
-    final Color bgColor = accentColor.withOpacity(0.07);
-    final Color borderColor = accentColor.withOpacity(0.35);
+    final Color bgColor = accentColor.withValues(alpha: 0.07);
+    final Color borderColor = accentColor.withValues(alpha: 0.35);
 
     return Container(
       decoration: BoxDecoration(
@@ -190,7 +190,7 @@ class PredictionAnalysisCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.15),
+              color: accent.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(_trendIcon(result.trend), color: accent, size: 18),
@@ -298,7 +298,7 @@ class PredictionAnalysisCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
-        color: AppTheme.statusDanger.withOpacity(0.1),
+        color: AppTheme.statusDanger.withValues(alpha: 0.1),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(12),
           bottomRight: Radius.circular(12),
@@ -373,9 +373,9 @@ class _ChangeChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
         '$sign${changeValue.toStringAsFixed(2)} $unit',
@@ -452,10 +452,10 @@ class _ValueBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: highlighted ? color.withOpacity(0.08) : Colors.white,
+        color: highlighted ? color.withValues(alpha: 0.08) : Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: highlighted ? color.withOpacity(0.3) : Colors.grey.shade200,
+          color: highlighted ? color.withValues(alpha: 0.3) : Colors.grey.shade200,
         ),
       ),
       child: Column(

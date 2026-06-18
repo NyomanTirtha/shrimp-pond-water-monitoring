@@ -19,17 +19,23 @@ class WaterThreshold {
   // pH Air
   static const double phMin = 7.5;
   static const double phMax = 8.5;
+
+  // Kekeruhan (Turbidity) dalam NTU
+  static const double turbMin = 0.0;
+  static const double turbMax = 100.0;
 }
 
 /// A single snapshot of all sensor readings.
 class WaterQualityModel {
   final double temperature; // °C
   final double ph; // dimensionless
+  final double turbidity; // NTU
   final DateTime timestamp;
 
   const WaterQualityModel({
     required this.temperature,
     required this.ph,
+    required this.turbidity,
     required this.timestamp,
   });
 
@@ -52,9 +58,25 @@ class WaterQualityModel {
     return ParameterStatus.safe;
   }
 
+  ParameterStatus get turbidityStatus {
+    if (turbidity < WaterThreshold.turbMin ||
+        turbidity > WaterThreshold.turbMax) {
+      return ParameterStatus.danger;
+    }
+    return ParameterStatus.safe;
+  }
+
+  /// Label kualitatif kejernihan air berdasarkan nilai NTU.
+  String get turbidityLabel {
+    if (turbidity < 25.0) return 'Jernih';
+    if (turbidity < 100.0) return 'Keruh';
+    return 'Sangat Keruh';
+  }
+
   bool hasSameSensorValues(WaterQualityModel other) {
     return temperature == other.temperature &&
-        ph == other.ph;
+        ph == other.ph &&
+        turbidity == other.turbidity;
   }
 }
 

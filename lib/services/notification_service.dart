@@ -17,6 +17,8 @@ class WarningThreshold {
   static const double tempMax = 32.0;
   static const double phMin = 7.5;
   static const double phMax = 8.5;
+  static const double turbMin = 0.0;
+  static const double turbMax = 100.0;
 }
 
 enum NotificationHistoryType { danger, warning }
