@@ -55,6 +55,7 @@ serviceAccountKey.json
 *service-account*.json
 *firebase-adminsdk*.json
 firebase-service-account*.json
+firebase-deployer.json
 credentials.json
 token.json
 
